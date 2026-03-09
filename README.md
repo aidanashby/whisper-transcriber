@@ -117,6 +117,18 @@ The file rotates at 5 MB and keeps two backups.
 
 ---
 
+## Attribution
+
+This application uses the [Whisper](https://github.com/openai/whisper) speech
+recognition model developed by [OpenAI](https://openai.com), made available
+under the [MIT Licence](https://github.com/openai/whisper/blob/main/LICENSE).
+It is not affiliated with or endorsed by OpenAI.
+
+Transcription is performed by [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
+an independent reimplementation of Whisper using CTranslate2.
+
+---
+
 ## Developer notes
 
 To run directly without building:
