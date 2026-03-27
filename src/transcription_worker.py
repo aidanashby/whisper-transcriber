@@ -172,6 +172,7 @@ class TranscriptionWorker:
         try:
             segments_gen, _ = self._model.transcribe(
                 audio_path,
+                language="en",
                 beam_size=5,
                 vad_filter=True,   # voice-activity filtering removes silence
             )
@@ -196,6 +197,7 @@ class TranscriptionWorker:
                 # Retry once on CPU.
                 segments_gen, _ = self._model.transcribe(
                     audio_path,
+                    language="en",
                     beam_size=5,
                     vad_filter=True,
                 )
