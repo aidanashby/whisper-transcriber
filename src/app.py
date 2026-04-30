@@ -22,6 +22,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import tkinter as tk
+
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD
 
@@ -29,10 +31,8 @@ from .ui.constants import (
     APP_BG,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
-    LEFT_PANEL_WEIGHT,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
-    RIGHT_PANEL_WEIGHT,
 )
 from .ui.left_panel import LeftPanel
 from .ui.right_panel import RightPanel
@@ -66,21 +66,30 @@ class WhisperApp(TkinterDnD.Tk):
         self.controller = controller
         controller.app  = self
 
-        # ── Two-column grid ───────────────────────────────────────────────────
-        self.grid_columnconfigure(0, weight=LEFT_PANEL_WEIGHT)
-        self.grid_columnconfigure(1, weight=RIGHT_PANEL_WEIGHT)
-        self.grid_rowconfigure(0, weight=1)
-
         # ── Panels ────────────────────────────────────────────────────────────
-        self.left_panel  = LeftPanel(self, controller)
-        self.right_panel = RightPanel(self, controller)
+        # CTkFrame.place() forbids width/height pixel offsets, so we use plain
+        # tk.Frame wrappers for geometry.  The wrappers get strict 1/3 / 2/3
+        # relwidth fractions (with pixel padding); the CTk panels are packed
+        # inside and fill their wrapper entirely.
+        _PAD, _GAP = 8, 8
+        _left_wrap  = tk.Frame(self, bg=APP_BG)
+        _right_wrap = tk.Frame(self, bg=APP_BG)
 
-        self.left_panel.grid(
-            row=0, column=0, sticky="nsew", padx=(8, 4), pady=8
+        _left_wrap.place(
+            x=_PAD, y=_PAD,
+            relwidth=1/3, width=-(_PAD + _GAP // 2),
+            relheight=1,  height=-2 * _PAD,
         )
-        self.right_panel.grid(
-            row=0, column=1, sticky="nsew", padx=(4, 8), pady=8
+        _right_wrap.place(
+            relx=1/3, x=_GAP // 2, y=_PAD,
+            relwidth=2/3, width=-(_PAD + _GAP // 2),
+            relheight=1,  height=-2 * _PAD,
         )
+
+        self.left_panel  = LeftPanel(_left_wrap,  controller)
+        self.right_panel = RightPanel(_right_wrap, controller)
+        self.left_panel.pack(fill="both", expand=True)
+        self.right_panel.pack(fill="both", expand=True)
 
         # Inject panel references into the controller.
         controller.left_panel  = self.left_panel

@@ -12,7 +12,8 @@ Pause/resume/stop are implemented with threading.Event primitives:
 
 import logging
 import threading
-from dataclasses import dataclass
+import wave
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -21,6 +22,15 @@ from faster_whisper import WhisperModel
 from .audio_processor import AudioProcessor
 
 logger = logging.getLogger(__name__)
+
+
+def _get_wav_duration(path: str) -> float:
+    """Return duration in seconds of a WAV file, or 0.0 on failure."""
+    try:
+        with wave.open(path) as wf:
+            return wf.getnframes() / wf.getframerate()
+    except Exception:
+        return 0.0
 
 
 @dataclass
@@ -32,11 +42,13 @@ class TranscriptionCallbacks:
     must be thread-safe — typically they enqueue a tuple that the UI
     thread polls via tkinter's after().
     """
-    on_start:       Callable[[str], None]
-    on_complete:    Callable[[str, list, Optional[str]], None]  # path, segments, warning
-    on_error:       Callable[[str, str], None]                  # path, message
-    on_cancelled:   Callable[[str], None]
+    on_start:        Callable[[str], None]
+    on_complete:     Callable[[str, list, Optional[str]], None]  # path, segments, warning
+    on_error:        Callable[[str, str], None]                  # path, message
+    on_cancelled:    Callable[[str], None]
     on_all_complete: Callable[[], None]
+    on_progress:     Optional[Callable[[str, float], None]] = None  # path, 0.0–1.0
+    on_segment:      Optional[Callable[[str, str], None]]  = None  # path, segment_text
 
 
 class TranscriptionWorker:
@@ -156,18 +168,26 @@ class TranscriptionWorker:
         tmp_path = AudioProcessor.preprocess(path)
 
         try:
-            segments, warning = self._run_inference(tmp_path, path)
+            duration = _get_wav_duration(tmp_path)
+            segments, warning = self._run_inference(tmp_path, path, duration, callbacks)
             callbacks.on_complete(path, segments, warning)
         finally:
             # Always clean up the temp file, even on error.
             Path(tmp_path).unlink(missing_ok=True)
 
-    def _run_inference(self, audio_path: str, original_path: str):
+    def _run_inference(
+        self,
+        audio_path: str,
+        original_path: str,
+        duration: float,
+        callbacks: TranscriptionCallbacks,
+    ):
         """
         Run Whisper inference on *audio_path*.
 
         Returns (segments, warning) where *warning* is None on a normal run
         or a short description string if a CUDA OOM caused a CPU retry.
+        Emits on_progress callbacks (0.0–1.0) as segments are decoded.
         """
         try:
             segments_gen, _ = self._model.transcribe(
@@ -176,8 +196,9 @@ class TranscriptionWorker:
                 beam_size=5,
                 vad_filter=True,   # voice-activity filtering removes silence
             )
-            # Consume the generator here (this is where inference actually runs).
-            segments = list(segments_gen)
+            segments = self._collect_segments(
+                segments_gen, original_path, duration, callbacks
+            )
             return segments, None
 
         except Exception as exc:
@@ -194,16 +215,37 @@ class TranscriptionWorker:
                     original_path,
                 )
                 self._reload_on_cpu()
-                # Retry once on CPU.
+                # Retry once on CPU — progress reported from the start again.
                 segments_gen, _ = self._model.transcribe(
                     audio_path,
                     language="en",
                     beam_size=5,
                     vad_filter=True,
                 )
-                segments = list(segments_gen)
+                segments = self._collect_segments(
+                    segments_gen, original_path, duration, callbacks
+                )
                 return segments, "GPU out of memory — CPU fallback used"
             raise
+
+    def _collect_segments(
+        self,
+        segments_gen,
+        original_path: str,
+        duration: float,
+        callbacks: TranscriptionCallbacks,
+    ) -> list:
+        """Consume the segments generator, emitting progress and segment updates."""
+        segments = []
+        for seg in segments_gen:
+            segments.append(seg)
+            text = seg.text.strip()
+            if text and callbacks.on_segment:
+                callbacks.on_segment(original_path, text)
+            if callbacks.on_progress and duration > 0:
+                progress = min(seg.end / duration, 0.99)
+                callbacks.on_progress(original_path, progress)
+        return segments
 
     def _reload_on_cpu(self) -> None:
         """Release the GPU model and reload on CPU."""

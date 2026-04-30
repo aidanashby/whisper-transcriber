@@ -22,11 +22,14 @@ REJECT_MSG_DURATION_MS = 3000  # how long the "non-WAV ignored" message shows
 
 # ── Row state colours ────────────────────────────────────────────────────────
 
-ROW_IDLE       = "#FAFAFA"   # at rest / white-ish
-ROW_PROCESSING = "#FFFDE7"   # light yellow — in progress
-ROW_COMPLETE   = "#E8F5E9"   # light green  — done
-ROW_ERROR      = "#FFCDD2"   # light red    — error / file not found
-ROW_CANCELLED  = "#F5F5F5"   # light grey   — user stopped
+ROW_IDLE           = "#FAFAFA"   # at rest / white-ish
+ROW_PROCESSING     = "#FFFDE7"   # light yellow — in progress (solid fallback)
+ROW_PROGRESS_DONE  = "#C8E6C9"   # light green  — completed portion of progress bar
+ROW_PROGRESS_TODO  = "#FFF9C4"   # pale yellow  — remaining portion of progress bar
+ROW_COMPLETE       = "#E8F5E9"   # light green  — done (legacy; use ROW_COMPLETE_DONE)
+ROW_COMPLETE_DONE  = "#A5D6A7"   # slightly darker green — fully transcribed
+ROW_ERROR          = "#FFCDD2"   # light red    — error / file not found
+ROW_CANCELLED      = "#F5F5F5"   # light grey   — user stopped
 
 # ── Drop-zone ────────────────────────────────────────────────────────────────
 
@@ -59,8 +62,11 @@ FONT_HEADING = ("Segoe UI", 15, "bold")
 FONT_SMALL   = ("Segoe UI", 10)
 FONT_MONO    = ("Consolas", 11)
 
-COLOR_MUTED = "#888888"
-COLOR_BODY  = "#1A1A1A"
+COLOR_MUTED   = "#888888"
+COLOR_BODY    = "#1A1A1A"
+COLOR_PENDING = "#333333"   # darker text for the "pending" status message
+
+FONT_PENDING = ("Segoe UI", 14)   # larger font for the pending status message
 
 # ── Transcription paragraph formatting ───────────────────────────────────────
 

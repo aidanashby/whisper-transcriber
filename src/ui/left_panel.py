@@ -230,6 +230,12 @@ class LeftPanel(ctk.CTkFrame):
         if row:
             row.set_state(state, message)
 
+    def update_row_progress(self, path: str, percent: float) -> None:
+        """Forward a progress update (0.0–1.0) to the matching FileRow."""
+        row = self._rows.get(path)
+        if row:
+            row.set_progress(percent)
+
     def refresh_start_button(self) -> None:
         """Enable / disable 'Start Transcription' based on current state."""
         has_files = bool(self._rows)

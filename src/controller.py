@@ -21,7 +21,7 @@ from the worker thread.
 
 import logging
 import queue
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
@@ -97,7 +97,8 @@ class AppController:
 
         self.file_entries: List[FileEntry]   = []
         self.selected_path: Optional[str]    = None
-        self.transcriptions: Dict[str, str]  = {}  # path → formatted text
+        self.transcriptions: Dict[str, str]  = {}  # path → final formatted text
+        self.partial_texts: Dict[str, str]   = {}  # path → accumulated streaming text
 
         self.worker = TranscriptionWorker()
         self._queue: queue.Queue = queue.Queue()
@@ -162,8 +163,19 @@ class AppController:
     def select_file(self, path: str) -> None:
         """Called when the user clicks a file row."""
         self.selected_path = path
-        if self.right_panel:
-            self.right_panel.show(path, self.transcriptions.get(path))
+        if not self.right_panel:
+            return
+        entry = next((e for e in self.file_entries if e.path == path), None)
+        state = entry.state if entry else "idle"
+        final_text = self.transcriptions.get(path)
+        if final_text:
+            self.right_panel.show(path, final_text, state)
+        elif state == "processing":
+            # Resume streaming view: show whatever has arrived so far.
+            partial = self.partial_texts.get(path, "")
+            self.right_panel.resume_stream(path, Path(path).name, partial)
+        else:
+            self.right_panel.show(path, None, state)
 
     # ── Transcription control ─────────────────────────────────────────────────
 
@@ -190,11 +202,13 @@ class AppController:
 
         # Wire up thread-safe callbacks that enqueue messages.
         callbacks = TranscriptionCallbacks(
-            on_start      = lambda p:       self._queue.put(("start",     p)),
-            on_complete   = lambda p, s, w: self._queue.put(("complete",  p, s, w)),
-            on_error      = lambda p, msg:  self._queue.put(("error",     p, msg)),
-            on_cancelled  = lambda p:       self._queue.put(("cancelled", p)),
-            on_all_complete = lambda:       self._queue.put(("all_done",)),
+            on_start        = lambda p:         self._queue.put(("start",    p)),
+            on_complete     = lambda p, s, w:   self._queue.put(("complete", p, s, w)),
+            on_error        = lambda p, msg:    self._queue.put(("error",    p, msg)),
+            on_cancelled    = lambda p:         self._queue.put(("cancelled",p)),
+            on_all_complete = lambda:           self._queue.put(("all_done",)),
+            on_progress     = lambda p, pct:    self._queue.put(("progress", p, pct)),
+            on_segment      = lambda p, t:      self._queue.put(("segment",  p, t)),
         )
 
         self.worker.transcribe_batch(pending, callbacks)
@@ -245,9 +259,11 @@ class AppController:
         kind = msg[0]
 
         if kind == "model_loaded":
-            # Worker finished loading the model from disk.
+            device = msg[1] if len(msg) > 1 else "cpu"
             if self.left_panel:
                 self.left_panel.set_model_ready(True)
+            if self.right_panel:
+                self.right_panel.set_device(device)
             return
 
         if kind == "model_error":
@@ -259,17 +275,34 @@ class AppController:
 
         if kind == "start":
             path = msg[1]
+            self.partial_texts.pop(path, None)   # clear any previous partial text
             self._set_entry_state(path, "processing")
+            if self.selected_path == path and self.right_panel:
+                self.right_panel.start_stream(path, Path(path).name)
+
+        elif kind == "segment":
+            path, seg_text = msg[1], msg[2]
+            # Accumulate partial text for late viewers.
+            prev = self.partial_texts.get(path, "")
+            self.partial_texts[path] = (prev + " " + seg_text).lstrip()
+            if self.selected_path == path and self.right_panel:
+                self.right_panel.append_segment(path, seg_text)
+
+        elif kind == "progress":
+            path, pct = msg[1], msg[2]
+            if self.left_panel:
+                self.left_panel.update_row_progress(path, pct)
 
         elif kind == "complete":
             path, segments, warning = msg[1], msg[2], msg[3]
             text = format_segments(segments)
             self.transcriptions[path] = text
+            self.partial_texts.pop(path, None)   # streaming done
             self._set_entry_state(path, "complete",
                                   "⚠ CPU fallback" if warning else "")
-            # If this file is currently selected, show the fresh transcription.
+            # If this file is currently selected, show the final formatted text.
             if self.selected_path == path and self.right_panel:
-                self.right_panel.show(path, text)
+                self.right_panel.show(path, text, "complete")
             if warning:
                 logger.warning("GPU OOM fallback for '%s': %s", path, warning)
 
@@ -308,7 +341,7 @@ class AppController:
         def _load():
             try:
                 self.worker.load_model(model_dir)
-                self._queue.put(("model_loaded",))
+                self._queue.put(("model_loaded", self.worker.device))
             except Exception as exc:
                 logger.exception("Model load failed")
                 self._queue.put(("model_error", str(exc)))
