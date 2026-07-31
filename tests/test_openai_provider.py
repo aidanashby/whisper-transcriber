@@ -1,13 +1,43 @@
 """Tests for OpenAIProvider — all network calls are mocked."""
 
 import threading
-import time
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    RateLimitError,
+)
 
 from src.providers.base import TranscriptionCallbacks, TranscriptionProvider
 from src.providers.openai_provider import OpenAIProvider
+
+
+def _make_exception(exc_type, message):
+    """
+    Construct a real instance of *exc_type* carrying *message*, so that
+    OpenAIProvider._map_error's isinstance() dispatch is genuinely exercised
+    (not mocked). The OpenAI SDK's HTTP-related exceptions require a real
+    httpx.Request/Response pair; plain built-in exceptions just take a message.
+    """
+    if exc_type in (FileNotFoundError, RuntimeError):
+        return exc_type(message)
+
+    request = httpx.Request("POST", "https://api.openai.com/v1/audio/transcriptions")
+
+    if exc_type is APIConnectionError:
+        return APIConnectionError(message=message, request=request)
+
+    status_by_type = {
+        AuthenticationError: 401,
+        RateLimitError: 429,
+        APIStatusError: 500,
+    }
+    response = httpx.Response(status_by_type[exc_type], request=request)
+    return exc_type(message, response=response, body=None)
 
 
 class _FakeCallbacks:
@@ -109,3 +139,53 @@ def test_successful_transcription_wraps_text_in_simple_segment(tmp_path, fake_au
     assert warning is None
     assert len(segments) == 1
     assert segments[0].text == "hello world"
+
+
+def test_oversized_preprocessed_file_is_rejected_before_upload(tmp_path, monkeypatch):
+    """The 25MB check must run on the PREPROCESSED file, not the raw source."""
+    src_file = tmp_path / "audio.wav"
+    src_file.write_bytes(b"fake wav")          # raw source is tiny
+
+    big = tmp_path / "preprocessed.wav"
+    big.write_bytes(b"\x00" * (26 * 1024 * 1024))   # preprocessed output is oversized
+    monkeypatch.setattr(
+        "src.providers.openai_provider.AudioProcessor.preprocess",
+        lambda input_path: str(big),
+    )
+
+    mock_client = MagicMock()
+    mock_client.api_key = "sk-test"
+    with patch("src.providers.openai_provider.OpenAI", return_value=mock_client):
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+
+    fake = _FakeCallbacks()
+    provider.transcribe_batch([str(src_file)], fake.as_callbacks())
+    assert fake.all_complete_called.wait(timeout=5), "batch never finished"
+
+    assert len(fake.errored) == 1
+    _, message = fake.errored[0]
+    assert "too large" in message.lower()
+    mock_client.audio.transcriptions.create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "exc, expected_fragment",
+    [
+        (AuthenticationError, "authentication failed"),
+        (RateLimitError, "rate limit"),
+        (APIConnectionError, "internet connection"),
+        (APIStatusError, "service unavailable"),
+        (FileNotFoundError, "File not found"),
+        (RuntimeError, "see the log"),
+    ],
+)
+def test_error_mapping_never_leaks_raw_exception_text(exc, expected_fragment):
+    with patch("src.providers.openai_provider.OpenAI"):
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+
+    secret = "SENSITIVE-C:\\Users\\someone\\private.wav"
+    instance = _make_exception(exc, secret)
+
+    message = provider._map_error(instance)
+    assert expected_fragment.lower() in message.lower()
+    assert secret not in message

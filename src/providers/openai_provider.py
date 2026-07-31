@@ -107,7 +107,10 @@ class OpenAIProvider:
             return "Could not reach OpenAI — check your internet connection"
         if isinstance(exc, APIStatusError):
             return "OpenAI service unavailable — try again later"
-        return str(exc)[:150]
+        if isinstance(exc, FileNotFoundError):
+            return "File not found — it may have been moved or deleted"
+        logger.error("Unmapped transcription error: %s", exc)
+        return "Transcription failed — see the log for details"
 
     def pause(self) -> None:
         pass  # supports_pause=False keeps the UI from ever calling this
