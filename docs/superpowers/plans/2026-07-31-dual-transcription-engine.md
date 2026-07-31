@@ -534,7 +534,11 @@ class OpenAIProvider:
             return "Could not reach OpenAI — check your internet connection"
         if isinstance(exc, APIStatusError):
             return "OpenAI service unavailable — try again later"
-        return str(exc)[:150]
+        if isinstance(exc, FileNotFoundError):
+            return "File not found — it may have been moved or deleted"
+        # Never return raw exception text — it can contain local file paths.
+        logger.error("Unmapped transcription error: %s", exc)
+        return "Transcription failed — see the log for details"
 
     def pause(self) -> None:
         pass  # supports_pause=False keeps the UI from ever calling this
@@ -605,28 +609,42 @@ def test_openai_provider_satisfies_protocol():
     assert provider.supports_pause is False
 
 
-def test_stop_between_files_cancels_remaining_queue(tmp_path, fake_audio_preprocess):
+def test_stop_during_batch_cancels_remaining_files(tmp_path, fake_audio_preprocess):
+    """
+    Stop lands while file 1 is in flight: that file finishes (an in-flight HTTP
+    call is not interrupted), and the remaining queued files are cancelled.
+
+    transcribe_batch() deliberately clears the stop event on entry — starting a
+    new batch resets stop state, matching LocalWhisperProvider. So the stop must
+    be issued from inside the batch, as a real user clicking Stop would.
+    """
     src_file = tmp_path / "audio.wav"
     src_file.write_bytes(b"fake wav")
 
     mock_client = MagicMock()
     mock_client.api_key = "sk-test"
-    mock_client.audio.transcriptions.create.return_value = MagicMock(text="hello world")
+
+    holder = {}
+
+    def create_side_effect(*args, **kwargs):
+        holder["provider"].stop()   # user clicks Stop while file 1 uploads
+        return MagicMock(text="hello world")
+
+    mock_client.audio.transcriptions.create.side_effect = create_side_effect
 
     with patch("src.providers.openai_provider.OpenAI", return_value=mock_client):
         provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+    holder["provider"] = provider
 
     fake = _FakeCallbacks()
     paths = [str(src_file), str(src_file), str(src_file)]
 
-    # Stop immediately, before the batch thread has a chance to process any file.
-    provider.stop()
     provider.transcribe_batch(paths, fake.as_callbacks())
-    fake.all_complete_called.wait(timeout=2)
+    assert fake.all_complete_called.wait(timeout=5), "batch never finished"
 
-    assert len(fake.cancelled) == 3
-    assert fake.completed == []
-    mock_client.audio.transcriptions.create.assert_not_called()
+    assert len(fake.completed) == 1, "file already in flight should still finish"
+    assert len(fake.cancelled) == 2, "remaining queued files should be cancelled"
+    assert mock_client.audio.transcriptions.create.call_count == 1
 
 
 def test_successful_transcription_wraps_text_in_simple_segment(tmp_path, fake_audio_preprocess):
