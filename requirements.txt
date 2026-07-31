@@ -6,6 +6,7 @@ huggingface_hub>=0.20.0
 pillow>=10.0.0
 pyinstaller>=6.0.0
 keyring>=24.0.0
+openai>=1.30.0
 # CUDA runtime DLLs — required for GPU acceleration on Windows.
 # ctranslate2 does not bundle these; the nvidia packages provide them.
 nvidia-cublas-cu12>=12.3
