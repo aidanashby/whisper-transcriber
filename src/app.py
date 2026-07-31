@@ -122,7 +122,13 @@ class WhisperApp(TkinterDnD.Tk):
 
     def _open_settings(self) -> None:
         from .main import MODEL_DIR  # local import avoids a circular import at module load
-        SettingsDialog(self, self.controller, str(MODEL_DIR))
+
+        existing = getattr(self, "_settings_dialog", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            existing.focus_force()
+            return
+        self._settings_dialog = SettingsDialog(self, self.controller, str(MODEL_DIR))
 
     def _on_close(self) -> None:
         """Gracefully stop any running transcription before quitting."""

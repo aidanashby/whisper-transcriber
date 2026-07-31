@@ -125,18 +125,57 @@ class SettingsDialog(ctk.CTkToplevel):
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_key_status()
-        self._on_engine_changed()
+        # Construction only sets up visibility — it must never have side effects
+        # on provider state (opening the dialog is not a settings change).
+        self._refresh_openai_controls_visibility()
 
     def _on_engine_changed(self) -> None:
+        """User changed the engine radio: update visibility, then persist."""
+        self._refresh_openai_controls_visibility()
+        self._persist_engine_choice()
+
+    def _refresh_openai_controls_visibility(self) -> None:
+        """Show OpenAI-only controls when the OpenAI engine is selected."""
         if self._engine_var.get() == "openai":
             self._model_frame.pack(anchor="w", pady=(0, 12))
             self._key_frame.pack(anchor="w", pady=(0, 12))
         else:
             self._model_frame.pack_forget()
             self._key_frame.pack_forget()
-        self._persist_engine_choice()
 
     def _persist_engine_choice(self) -> None:
+        """
+        Persist the current engine/model selection and rebuild the provider.
+
+        No-ops while a batch is running — swapping the provider mid-run would
+        orphan the thread doing the work and break Stop/Pause. Also no-ops if
+        nothing actually changed, so re-selecting the same radio doesn't
+        needlessly reload the model.
+        """
+        if self._controller.is_running:
+            return
+
+        new_settings = settings_module.AppSettings(
+            engine=self._engine_var.get(),
+            openai_model=self._model_var.get(),
+        )
+        if new_settings == settings_module.load_settings():
+            return   # nothing changed — don't reload the model needlessly
+
+        settings_module.save_settings(new_settings)
+        self._controller.initialize_provider(self._model_dir)
+
+    def _reinitialize_provider(self) -> None:
+        """
+        Rebuild the provider unconditionally (still guarded on is_running).
+
+        Used after a key change: the engine/model settings may be unchanged
+        (so `_persist_engine_choice`'s equality check would no-op), but the
+        provider still needs rebuilding to pick up the new/cleared key and
+        update the Start button's enabled state.
+        """
+        if self._controller.is_running:
+            return
         settings_module.save_settings(
             settings_module.AppSettings(
                 engine=self._engine_var.get(),
@@ -156,12 +195,12 @@ class SettingsDialog(ctk.CTkToplevel):
             return
         self._key_entry.delete(0, "end")
         self._refresh_key_status()
-        self._persist_engine_choice()
+        self._reinitialize_provider()
 
     def _clear_key(self) -> None:
         settings_module.clear_api_key()
         self._refresh_key_status()
-        self._persist_engine_choice()
+        self._reinitialize_provider()
 
     def _refresh_key_status(self) -> None:
         has_key = bool(settings_module.get_api_key())

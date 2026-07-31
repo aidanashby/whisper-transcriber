@@ -347,6 +347,10 @@ class AppController:
         Called once at startup (main.py) and again whenever the user changes
         engine or model in the Settings dialog.
         """
+        if self._is_running:
+            logger.warning("initialize_provider called while a batch is running — ignoring.")
+            return
+
         cfg = settings_module.load_settings()
 
         if cfg.engine == "local":
