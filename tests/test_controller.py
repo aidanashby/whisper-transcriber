@@ -34,7 +34,7 @@ def test_initialize_provider_replaces_provider_when_not_running(monkeypatch):
     monkeypatch.setattr(
         settings_module,
         "load_settings",
-        lambda: AppSettings(engine="local", openai_model="gpt-4o-transcribe"),
+        lambda: AppSettings(engine="local", openai_model="gpt-transcribe"),
     )
     # Never load a real 1.5GB model in a test.
     monkeypatch.setattr(LocalWhisperProvider, "load_model", lambda self, model_dir: None)

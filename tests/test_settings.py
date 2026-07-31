@@ -41,19 +41,19 @@ def fake_keyring(monkeypatch):
 
 def test_load_settings_defaults_when_file_missing(isolated_settings_path):
     result = settings_module.load_settings()
-    assert result == AppSettings(engine="local", openai_model="gpt-4o-transcribe")
+    assert result == AppSettings(engine="local", openai_model="gpt-transcribe")
 
 
 def test_save_then_load_round_trips(isolated_settings_path):
-    settings_module.save_settings(AppSettings(engine="openai", openai_model="gpt-4o-mini-transcribe"))
+    settings_module.save_settings(AppSettings(engine="openai", openai_model="gpt-transcribe"))
     result = settings_module.load_settings()
     assert result.engine == "openai"
-    assert result.openai_model == "gpt-4o-mini-transcribe"
+    assert result.openai_model == "gpt-transcribe"
 
 
 def test_load_settings_rejects_unknown_engine(isolated_settings_path):
     isolated_settings_path.parent.mkdir(parents=True, exist_ok=True)
-    isolated_settings_path.write_text(json.dumps({"engine": "bogus", "openai_model": "gpt-4o-transcribe"}))
+    isolated_settings_path.write_text(json.dumps({"engine": "bogus", "openai_model": "gpt-transcribe"}))
     result = settings_module.load_settings()
     assert result.engine == "local"
 

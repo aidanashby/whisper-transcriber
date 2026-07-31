@@ -75,7 +75,7 @@ def fake_audio_preprocess(tmp_path, monkeypatch):
 
 def test_openai_provider_satisfies_protocol():
     with patch("src.providers.openai_provider.OpenAI"):
-        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-transcribe")
     assert isinstance(provider, TranscriptionProvider)
     assert provider.supports_pause is False
 
@@ -104,7 +104,7 @@ def test_stop_during_batch_cancels_remaining_files(tmp_path, fake_audio_preproce
     mock_client.audio.transcriptions.create.side_effect = create_side_effect
 
     with patch("src.providers.openai_provider.OpenAI", return_value=mock_client):
-        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-transcribe")
     holder["provider"] = provider
 
     fake = _FakeCallbacks()
@@ -127,7 +127,7 @@ def test_successful_transcription_wraps_text_in_simple_segment(tmp_path, fake_au
     mock_client.audio.transcriptions.create.return_value = MagicMock(text="hello world")
 
     with patch("src.providers.openai_provider.OpenAI", return_value=mock_client):
-        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-transcribe")
 
     fake = _FakeCallbacks()
     provider.transcribe_batch([str(src_file)], fake.as_callbacks())
@@ -156,7 +156,7 @@ def test_oversized_preprocessed_file_is_rejected_before_upload(tmp_path, monkeyp
     mock_client = MagicMock()
     mock_client.api_key = "sk-test"
     with patch("src.providers.openai_provider.OpenAI", return_value=mock_client):
-        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-transcribe")
 
     fake = _FakeCallbacks()
     provider.transcribe_batch([str(src_file)], fake.as_callbacks())
@@ -181,7 +181,7 @@ def test_oversized_preprocessed_file_is_rejected_before_upload(tmp_path, monkeyp
 )
 def test_error_mapping_never_leaks_raw_exception_text(exc, expected_fragment):
     with patch("src.providers.openai_provider.OpenAI"):
-        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o-transcribe")
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-transcribe")
 
     secret = "SENSITIVE-C:\\Users\\someone\\private.wav"
     instance = _make_exception(exc, secret)

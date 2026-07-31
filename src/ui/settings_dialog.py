@@ -46,7 +46,7 @@ class SettingsDialog(ctk.CTkToplevel):
         self._model_var  = ctk.StringVar(value=cfg.openai_model)
 
         self.title("Whisper Transcriber — Settings")
-        self.geometry("420x360")
+        self.geometry("420x400")
         self.resizable(False, False)
         self.configure(fg_color=PANEL_BG)
         self.grab_set()
@@ -83,6 +83,10 @@ class SettingsDialog(ctk.CTkToplevel):
             command=self._on_engine_changed,
         ).pack(anchor="w", pady=2)
 
+        # Model selection is kept as working code but not shown in the UI —
+        # VALID_OPENAI_MODELS currently has a single entry (gpt-transcribe),
+        # so a picker with one option is just noise. Re-pack this frame in
+        # _refresh_openai_controls_visibility once a second model is added.
         self._model_frame = ctk.CTkFrame(container, fg_color="transparent")
         ctk.CTkLabel(
             self._model_frame, text="OpenAI model:", font=FONT_BODY, text_color=COLOR_BODY
@@ -137,7 +141,8 @@ class SettingsDialog(ctk.CTkToplevel):
     def _refresh_openai_controls_visibility(self) -> None:
         """Show OpenAI-only controls when the OpenAI engine is selected."""
         if self._engine_var.get() == "openai":
-            self._model_frame.pack(anchor="w", pady=(0, 12))
+            # self._model_frame stays unpacked: only one valid model exists
+            # right now, so the picker has nothing useful to offer.
             self._key_frame.pack(anchor="w", pady=(0, 12))
         else:
             self._model_frame.pack_forget()
@@ -190,27 +195,35 @@ class SettingsDialog(ctk.CTkToplevel):
             return
         if not settings_module.set_api_key(key):
             self._key_status_lbl.configure(
-                text="Failed to save key — OS credential store unavailable"
+                text="Failed to save key — OS credential store unavailable",
+                text_color=BTN_DANGER_COLOR,
             )
             return
         self._key_entry.delete(0, "end")
-        self._refresh_key_status()
+        self._refresh_key_status(just_saved=True)
         self._reinitialize_provider()
 
     def _clear_key(self) -> None:
         if not settings_module.clear_api_key():
             self._key_status_lbl.configure(
-                text="Failed to clear key — OS credential store unavailable"
+                text="Failed to clear key — OS credential store unavailable",
+                text_color=BTN_DANGER_COLOR,
             )
             return
-        self._refresh_key_status()
+        self._refresh_key_status(just_cleared=True)
         self._reinitialize_provider()
 
-    def _refresh_key_status(self) -> None:
+    def _refresh_key_status(self, just_saved: bool = False, just_cleared: bool = False) -> None:
         has_key = bool(settings_module.get_api_key())
-        self._key_status_lbl.configure(
-            text="✓ Key configured" if has_key else "No key set"
-        )
+        if just_saved:
+            text, color = "✓ Key saved", BTN_ACTION_COLOR
+        elif just_cleared:
+            text, color = "Key cleared", COLOR_MUTED
+        elif has_key:
+            text, color = "✓ Key configured", BTN_ACTION_COLOR
+        else:
+            text, color = "No key set", COLOR_MUTED
+        self._key_status_lbl.configure(text=text, text_color=color)
 
     def _on_close(self) -> None:
         # Engine, model, and key changes are all persisted as they happen,

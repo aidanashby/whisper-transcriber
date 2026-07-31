@@ -107,6 +107,14 @@ def main() -> None:
     # Heavy imports deferred until after logging is configured.
     import customtkinter as ctk
 
+    # CustomTkinter's automatic DPI-scaling tracker is incompatible with
+    # Python 3.13's tkinter internals (AttributeError: 'tkapp' object has no
+    # attribute 'block_update_dimensions_event') and fires whenever a second
+    # top-level window is registered — e.g. opening Settings — leaving the
+    # main window stuck shrunk and dimmed because the tracker's callback
+    # errors out mid-resize. Must be called before any window is created.
+    ctk.deactivate_automatic_dpi_awareness()
+
     ctk.set_appearance_mode("light")
     ctk.set_default_color_theme("green")
 

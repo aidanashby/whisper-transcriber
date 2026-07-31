@@ -30,13 +30,16 @@ _KEYRING_SERVICE = "WhisperTranscriber"
 _KEYRING_ACCOUNT = "openai_api_key"
 
 VALID_ENGINES = ("local", "openai")
-VALID_OPENAI_MODELS = ("gpt-4o-transcribe", "gpt-4o-mini-transcribe")
+VALID_OPENAI_MODELS = ("gpt-transcribe",)
+# gpt-live-transcribe is a Realtime/streaming model and isn't compatible with
+# this app's one-shot file-upload flow (client.audio.transcriptions.create in
+# openai_provider.py) — leave it out until streaming support exists.
 
 
 @dataclass
 class AppSettings:
     engine: str = "local"
-    openai_model: str = "gpt-4o-transcribe"
+    openai_model: str = "gpt-transcribe"
 
 
 def load_settings() -> AppSettings:
@@ -50,13 +53,13 @@ def load_settings() -> AppSettings:
         return AppSettings()
 
     engine = data.get("engine", "local")
-    model = data.get("openai_model", "gpt-4o-transcribe")
+    model = data.get("openai_model", "gpt-transcribe")
     if engine not in VALID_ENGINES:
         logger.warning("Unknown engine '%s' in settings.json — defaulting to local.", engine)
         engine = "local"
     if model not in VALID_OPENAI_MODELS:
         logger.warning("Unknown openai_model '%s' in settings.json — defaulting.", model)
-        model = "gpt-4o-transcribe"
+        model = "gpt-transcribe"
     return AppSettings(engine=engine, openai_model=model)
 
 
