@@ -1092,6 +1092,7 @@ class SettingsDialog(ctk.CTkToplevel):
             values=list(settings_module.VALID_OPENAI_MODELS),
             variable=self._model_var,
             state=state,
+            command=lambda _choice: self._persist_engine_choice(),
         ).pack(anchor="w", pady=(4, 0))
 
         self._key_frame = ctk.CTkFrame(container, fg_color="transparent")
@@ -1169,8 +1170,8 @@ class SettingsDialog(ctk.CTkToplevel):
         )
 
     def _on_close(self) -> None:
-        if self._engine_var.get() != self._model_var.get():
-            pass  # no-op branch kept for clarity that model changes are already persisted live
+        # Engine, model, and key changes are all persisted as they happen,
+        # so closing needs no save step.
         self.grab_release()
         self.destroy()
 ```
