@@ -2,18 +2,33 @@
 
 All notable changes to Whisper Transcriber are documented here.
 
-## Unreleased
+## [1.1.0] - 2026-07-31
 
 ### Added
 - Dual transcription engine support: choose between Local (offline, faster-whisper)
-  or OpenAI (cloud, higher accuracy).
-- Settings dialog allowing selection of transcription engine, OpenAI model choice,
-  and API key management.
-- Secure API key storage via Windows Credential Manager; API keys are never stored
-  in plain text.
+  or OpenAI (cloud, gpt-transcribe).
+- Settings dialog (gear icon) for selecting the transcription engine and managing
+  the OpenAI API key.
+- Secure API key storage via Windows Credential Manager (`keyring`); API keys are
+  never written to settings.json, logs, or disk in plain text.
+- Privacy notice in the transcript panel reflecting the active engine ("Audio
+  never leaves this computer" vs. "Audio is securely uploaded to OpenAI").
 
 ### Changed
 - Existing local-only transcription workflow remains unchanged and available by default.
+
+### Fixed
+- Switching from OpenAI back to Local no longer leaves the Start button clickable
+  during the ~40s model reload.
+- Switching engines while a local model load is in flight no longer risks a crash
+  or a permanently stuck "Model load failed" state.
+- Clearing the API key no longer crashes if no OS credential store backend is
+  available; the failure is now shown in the dialog instead.
+- Opening Settings no longer leaves the main window shrunk and dimmed (worked
+  around a CustomTkinter/Python 3.13 DPI-scaling incompatibility).
+- Saving or clearing the API key now shows a clear, colour-coded confirmation
+  instead of an easy-to-miss status line.
+- A hung OpenAI connection no longer blocks the Stop button indefinitely.
 
 ## [1.0.1] - 2026-03-27
 

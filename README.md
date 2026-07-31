@@ -1,9 +1,11 @@
 # Whisper Transcriber
 
-A polished Windows desktop application that transcribes WAV audio files
-using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (Whisper
-large-v3 model).  Designed for non-technical users — everything works after
-running a single installer.
+A polished Windows desktop application that transcribes WAV audio files.
+Two transcription engines are supported: **Local** (offline, free, powered by
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) / Whisper
+large-v3) and **OpenAI** (cloud, requires an API key, higher accuracy).
+Designed for non-technical users — everything works after running a single
+installer.
 
 ---
 
@@ -70,6 +72,27 @@ Subsequent launches load from this cache and are fast.
 
 ---
 
+## Transcription engines
+
+Open **Settings** (gear icon) to choose an engine:
+
+- **Local** — offline, free, uses the bundled faster-whisper model. Default,
+  and requires no configuration beyond the first-run model download above.
+- **OpenAI** — cloud-based (`gpt-transcribe`), requires an OpenAI API key.
+  Paste your key into the Settings dialog and click **Save key**. The key is
+  stored via the Windows Credential Manager (through the `keyring` package)
+  and is never written to `settings.json`, logs, or disk in plain text.
+  Audio files are uploaded to OpenAI for transcription when this engine is
+  active — a privacy notice in the transcript panel reflects whichever
+  engine is currently selected. The OpenAI engine has a 25 MB per-file limit
+  (enforced after preprocessing) and requires an internet connection for
+  every file.
+
+Switching engines takes effect immediately; switching back to Local briefly
+reloads the local model in the background.
+
+---
+
 ## GPU acceleration
 
 GPU transcription is used automatically if an NVIDIA GPU is present with an
@@ -102,6 +125,8 @@ device was selected:
 | Model download fails | Ensure internet access and retry.  The app shows a Retry button on failure. |
 | Transcription very slow | CPU mode is in use.  Check the log to confirm.  Ensure you have an NVIDIA GPU with an up-to-date driver. |
 | "CUDA out of memory" in log | The app automatically retried on CPU.  This is normal for very long files. |
+| "Set OpenAI API key to start" | Open Settings, paste a valid OpenAI API key, and click Save key. |
+| OpenAI transcription fails immediately | Check the file is under 25 MB after preprocessing, and that your API key and internet connection are valid. |
 
 ---
 
@@ -124,8 +149,14 @@ recognition model developed by [OpenAI](https://openai.com), made available
 under the [MIT Licence](https://github.com/openai/whisper/blob/main/LICENSE).
 It is not affiliated with or endorsed by OpenAI.
 
-Transcription is performed by [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
+Local transcription is performed by [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
 an independent reimplementation of Whisper using CTranslate2.
+
+The optional OpenAI engine sends audio to the [OpenAI transcription
+API](https://platform.openai.com/docs/guides/speech-to-text) using a
+user-supplied API key; this app is not affiliated with or endorsed by
+OpenAI, and use of that engine is subject to OpenAI's own terms and
+pricing.
 
 ---
 

@@ -23,9 +23,9 @@ InstallDirRegKey  HKLM "Software\WhisperTranscriber" "InstallDir"
 RequestExecutionLevel admin
 
 ; Version info embedded in the PE header
-VIProductVersion  "1.0.0.0"
+VIProductVersion  "1.1.0.0"
 VIAddVersionKey   "ProductName"      "Whisper Transcriber"
-VIAddVersionKey   "ProductVersion"   "1.0.0"
+VIAddVersionKey   "ProductVersion"   "1.1.0"
 VIAddVersionKey   "FileDescription"  "Whisper Transcriber Installer"
 VIAddVersionKey   "LegalCopyright"   ""
 
@@ -77,7 +77,7 @@ Section "Install" SecInstall
         "Publisher"        "Whisper Transcriber"
     WriteRegStr HKLM \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\WhisperTranscriber" \
-        "DisplayVersion"   "1.0.0"
+        "DisplayVersion"   "1.1.0"
     WriteRegDWORD HKLM \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\WhisperTranscriber" \
         "NoModify" 1
