@@ -217,7 +217,7 @@ git commit -m "refactor: extract TranscriptionProvider protocol, move local engi
 
 **Interfaces:**
 - Consumes: nothing from Task 1.
-- Produces: `AppSettings(engine: str = "local", openai_model: str = "gpt-4o-transcribe")` dataclass; `load_settings() -> AppSettings`; `save_settings(settings: AppSettings) -> None`; `get_api_key() -> Optional[str]`; `set_api_key(key: str) -> None`; `clear_api_key() -> None`. Consumed by `controller.py` (Task 4) and `settings_dialog.py` (Task 6).
+- Produces: `AppSettings(engine: str = "local", openai_model: str = "gpt-4o-transcribe")` dataclass; `load_settings() -> AppSettings`; `save_settings(settings: AppSettings) -> None`; `get_api_key() -> Optional[str]`; `set_api_key(key: str) -> bool` (True on success, False if the keyring backend is unavailable); `clear_api_key() -> None`. Consumed by `controller.py` (Task 4) and `settings_dialog.py` (Task 6).
 
 - [ ] **Step 1: Write the settings module**
 
@@ -299,8 +299,14 @@ def get_api_key() -> Optional[str]:
         return None
 
 
-def set_api_key(key: str) -> None:
-    keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, key)
+def set_api_key(key: str) -> bool:
+    """Store the API key via keyring. Returns True on success, False if the keyring backend is unavailable."""
+    try:
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, key)
+        return True
+    except Exception as exc:
+        logger.error("Failed to save API key to keyring: %s", exc)
+        return False
 
 
 def clear_api_key() -> None:
@@ -1124,7 +1130,11 @@ class SettingsDialog(ctk.CTkToplevel):
         key = self._key_entry.get().strip()
         if not key:
             return
-        settings_module.set_api_key(key)
+        if not settings_module.set_api_key(key):
+            self._key_status_lbl.configure(
+                text="Failed to save key — OS credential store unavailable"
+            )
+            return
         self._key_entry.delete(0, "end")
         self._refresh_key_status()
         self._persist_engine_choice()
