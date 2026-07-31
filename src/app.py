@@ -36,6 +36,7 @@ from .ui.constants import (
 )
 from .ui.left_panel import LeftPanel
 from .ui.right_panel import RightPanel
+from .ui.settings_dialog import SettingsDialog
 
 if TYPE_CHECKING:
     from .controller import AppController
@@ -66,6 +67,22 @@ class WhisperApp(TkinterDnD.Tk):
         self.controller = controller
         controller.app  = self
 
+        # ── Top bar (settings gear) ──────────────────────────────────────────
+        _TOP_BAR_HEIGHT = 36
+        _top_bar = tk.Frame(self, bg=APP_BG)
+        _top_bar.place(x=0, y=0, relwidth=1, height=_TOP_BAR_HEIGHT)
+
+        ctk.CTkButton(
+            _top_bar,
+            text="⚙ Settings",
+            command=self._open_settings,
+            fg_color="transparent",
+            hover_color="#E0E0E0",
+            text_color="#333333",
+            width=100,
+            height=28,
+        ).place(relx=1.0, x=-8, y=4, anchor="ne")
+
         # ── Panels ────────────────────────────────────────────────────────────
         # CTkFrame.place() forbids width/height pixel offsets, so we use plain
         # tk.Frame wrappers for geometry.  The wrappers get strict 1/3 / 2/3
@@ -76,14 +93,14 @@ class WhisperApp(TkinterDnD.Tk):
         _right_wrap = tk.Frame(self, bg=APP_BG)
 
         _left_wrap.place(
-            x=_PAD, y=_PAD,
+            x=_PAD, y=_TOP_BAR_HEIGHT + _PAD,
             relwidth=1/3, width=-(_PAD + _GAP // 2),
-            relheight=1,  height=-2 * _PAD,
+            relheight=1,  height=-(_TOP_BAR_HEIGHT + 2 * _PAD),
         )
         _right_wrap.place(
-            relx=1/3, x=_GAP // 2, y=_PAD,
+            relx=1/3, x=_GAP // 2, y=_TOP_BAR_HEIGHT + _PAD,
             relwidth=2/3, width=-(_PAD + _GAP // 2),
-            relheight=1,  height=-2 * _PAD,
+            relheight=1,  height=-(_TOP_BAR_HEIGHT + 2 * _PAD),
         )
 
         self.left_panel  = LeftPanel(_left_wrap,  controller)
@@ -103,10 +120,20 @@ class WhisperApp(TkinterDnD.Tk):
 
         logger.info("WhisperApp window created.")
 
+    def _open_settings(self) -> None:
+        from .main import MODEL_DIR  # local import avoids a circular import at module load
+
+        existing = getattr(self, "_settings_dialog", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            existing.focus_force()
+            return
+        self._settings_dialog = SettingsDialog(self, self.controller, str(MODEL_DIR))
+
     def _on_close(self) -> None:
         """Gracefully stop any running transcription before quitting."""
         logger.info("Window close requested.")
-        if self.controller.worker.is_running:
+        if self.controller.provider is not None and self.controller.provider.is_running:
             self.controller.stop_transcription()
             # Give the worker thread a moment to cleanly finish.
             self.after(300, self.destroy)

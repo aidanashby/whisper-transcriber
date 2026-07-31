@@ -74,7 +74,7 @@ class LeftPanel(ctk.CTkFrame):
         super().__init__(parent, fg_color=PANEL_BG, corner_radius=10)
         self._controller = controller
         self._rows: Dict[str, FileRow] = {}  # path → FileRow widget
-        self._model_ready = False
+        self._provider_ready = False
         self._is_paused   = False
 
         # ── Outer grid: content (row 0, expands) + button bar (row 1, fixed) ─
@@ -239,38 +239,42 @@ class LeftPanel(ctk.CTkFrame):
     def refresh_start_button(self) -> None:
         """Enable / disable 'Start Transcription' based on current state."""
         has_files = bool(self._rows)
-        ready     = self._model_ready and has_files
+        ready     = self._provider_ready and has_files
         self._start_btn.configure(state="normal" if ready else "disabled")
 
-    def set_model_ready(self, ready: bool, error: str = "") -> None:
+    def set_provider_ready(self, ready: bool, not_ready_label: str = "Model load failed") -> None:
         """
-        Called once the model finishes loading (or fails).
+        Called once the active provider finishes becoming ready (or fails).
 
-        Switches the button label from 'Loading model…' to the normal state.
+        For the local engine this means the Whisper model finished loading;
+        for OpenAI it means a valid API key is configured.
         """
-        self._model_ready = ready
+        self._provider_ready = ready
         if ready:
             self._start_btn.configure(text="Start Transcription")
         else:
-            self._start_btn.configure(text="Model load failed")
+            self._start_btn.configure(text=not_ready_label)
         self.refresh_start_button()
 
-    def set_running(self, running: bool, paused: bool = False) -> None:
+    def set_running(self, running: bool, paused: bool = False, supports_pause: bool = True) -> None:
         """
-        Toggle between the 'Start' button and the 'Pause'+'Stop' pair.
+        Toggle between the 'Start' button and the running-state button(s).
 
-        running=True, paused=False → Pause + Stop (active)
-        running=True, paused=True  → Resume + Stop (paused)
-        running=False              → Start Transcription
+        running=True,  paused=False, supports_pause=True  → Pause + Stop
+        running=True,  paused=True,  supports_pause=True  → Resume + Stop
+        running=True,  supports_pause=False                → Stop only (full width)
+        running=False                                      → Start Transcription
         """
         self._is_paused = paused
         if running:
             self._start_btn.grid_remove()
-            self._pause_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=0)
-            self._stop_btn.grid( row=0, column=1, sticky="ew", padx=(4, 0), pady=0)
-            self._pause_btn.configure(
-                text="Resume" if paused else "Pause"
-            )
+            if supports_pause:
+                self._pause_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=0)
+                self._stop_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=0)
+                self._pause_btn.configure(text="Resume" if paused else "Pause")
+            else:
+                self._pause_btn.grid_remove()
+                self._stop_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
         else:
             self._pause_btn.grid_remove()
             self._stop_btn.grid_remove()

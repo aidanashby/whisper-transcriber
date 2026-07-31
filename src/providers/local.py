@@ -1,5 +1,5 @@
 """
-Background transcription worker.
+Local faster-whisper transcription provider.
 
 Runs in a daemon thread so the UI stays responsive at all times.
 Communicates back to the UI via caller-supplied callbacks (which are
@@ -13,13 +13,13 @@ Pause/resume/stop are implemented with threading.Event primitives:
 import logging
 import threading
 import wave
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from faster_whisper import WhisperModel
 
-from .audio_processor import AudioProcessor
+from ..audio_processor import AudioProcessor
+from .base import TranscriptionCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -33,26 +33,10 @@ def _get_wav_duration(path: str) -> float:
         return 0.0
 
 
-@dataclass
-class TranscriptionCallbacks:
-    """
-    All callback functions expected by TranscriptionWorker.
-
-    Each callback is invoked from the worker thread.  Implementations
-    must be thread-safe — typically they enqueue a tuple that the UI
-    thread polls via tkinter's after().
-    """
-    on_start:        Callable[[str], None]
-    on_complete:     Callable[[str, list, Optional[str]], None]  # path, segments, warning
-    on_error:        Callable[[str, str], None]                  # path, message
-    on_cancelled:    Callable[[str], None]
-    on_all_complete: Callable[[], None]
-    on_progress:     Optional[Callable[[str, float], None]] = None  # path, 0.0–1.0
-    on_segment:      Optional[Callable[[str, str], None]]  = None  # path, segment_text
-
-
-class TranscriptionWorker:
+class LocalWhisperProvider:
     """Manages model loading and sequential file transcription in a background thread."""
+
+    supports_pause = True
 
     def __init__(self) -> None:
         self._model: Optional[WhisperModel] = None
@@ -295,3 +279,7 @@ class TranscriptionWorker:
     @property
     def model_loaded(self) -> bool:
         return self._model is not None
+
+    @property
+    def ready(self) -> bool:
+        return self.model_loaded
