@@ -28,6 +28,9 @@ Thumbs.db
 # Logs
 *.log
 
+# pytest
+pytest-of-*/
+
 # Distribution archives
 *.zip
 *.exe

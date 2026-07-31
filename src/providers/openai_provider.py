@@ -28,6 +28,7 @@ from .base import SimpleSegment, TranscriptionCallbacks
 logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 25 * 1024 * 1024  # OpenAI transcription API's per-file limit
+REQUEST_TIMEOUT_SECONDS = 120  # bounds Stop responsiveness on a hung connection
 
 
 class OpenAIProvider:
@@ -36,7 +37,7 @@ class OpenAIProvider:
     supports_pause = False
 
     def __init__(self, api_key: str, model: str) -> None:
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS)
         self._model = model
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None

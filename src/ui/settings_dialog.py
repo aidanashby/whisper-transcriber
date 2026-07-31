@@ -198,7 +198,11 @@ class SettingsDialog(ctk.CTkToplevel):
         self._reinitialize_provider()
 
     def _clear_key(self) -> None:
-        settings_module.clear_api_key()
+        if not settings_module.clear_api_key():
+            self._key_status_lbl.configure(
+                text="Failed to clear key — OS credential store unavailable"
+            )
+            return
         self._refresh_key_status()
         self._reinitialize_provider()
 

@@ -355,12 +355,16 @@ class AppController:
 
         if cfg.engine == "local":
             self.provider = LocalWhisperProvider()
+            if self.left_panel:
+                self.left_panel.set_provider_ready(False, "Loading local model…")
             self._load_local_model_async(model_dir)
             return
 
         api_key = settings_module.get_api_key()
         if not api_key:
             self.provider = None
+            if self.right_panel:
+                self.right_panel.set_engine_label("OpenAI")
             if self.left_panel:
                 self.left_panel.set_provider_ready(False, "Set OpenAI API key to start")
             return
@@ -375,17 +379,27 @@ class AppController:
         """
         Load the local Whisper model in a background thread.
         Posts "provider_ready" or "provider_error" to the queue when done.
+
+        Captures the provider instance at spawn time rather than reading
+        self.provider inside the thread — if the user switches engines while
+        this load is in flight, self.provider may be reassigned (or set to
+        None) before the thread finishes, which would otherwise raise or
+        silently report readiness for the wrong provider.
         """
         import threading
 
+        provider = self.provider
+
         def _load():
             try:
-                self.provider.load_model(model_dir)
-                label = "GPU" if self.provider.device == "cuda" else "CPU"
-                self._queue.put(("provider_ready", label))
+                provider.load_model(model_dir)
+                label = "GPU" if provider.device == "cuda" else "CPU"
+                if self.provider is provider:
+                    self._queue.put(("provider_ready", label))
             except Exception as exc:
                 logger.exception("Model load failed")
-                self._queue.put(("provider_error", str(exc)))
+                if self.provider is provider:
+                    self._queue.put(("provider_error", str(exc)))
 
         threading.Thread(target=_load, daemon=True, name="ModelLoader").start()
 

@@ -75,3 +75,10 @@ def test_set_api_key_returns_false_on_keyring_failure(monkeypatch):
         raise RuntimeError("keyring backend unavailable")
     monkeypatch.setattr(settings_module.keyring, "set_password", failing_set)
     assert settings_module.set_api_key("sk-test") is False
+
+
+def test_clear_api_key_returns_false_on_keyring_failure(monkeypatch):
+    def failing_delete(service, account):
+        raise settings_module.keyring.errors.NoKeyringError("no backend available")
+    monkeypatch.setattr(settings_module.keyring, "delete_password", failing_delete)
+    assert settings_module.clear_api_key() is False

@@ -83,8 +83,13 @@ def set_api_key(key: str) -> bool:
         return False
 
 
-def clear_api_key() -> None:
+def clear_api_key() -> bool:
+    """Delete the stored API key via keyring. Returns True on success or if already absent, False if the keyring backend is unavailable."""
     try:
         keyring.delete_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT)
+        return True
     except keyring.errors.PasswordDeleteError:
-        pass  # already absent — clearing an unset key is not an error
+        return True  # already absent — clearing an unset key is not an error
+    except Exception as exc:
+        logger.error("Failed to clear API key from keyring: %s", exc)
+        return False

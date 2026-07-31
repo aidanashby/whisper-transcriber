@@ -8,7 +8,7 @@ controller and UI never need to know which engine is active.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Protocol, runtime_checkable
 
 

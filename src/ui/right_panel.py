@@ -101,7 +101,7 @@ class RightPanel(ctk.CTkFrame):
 
         self._privacy_lbl = ctk.CTkLabel(
             self._heading_frame,
-            text="",
+            text="Audio never leaves this computer.",
             font=FONT_SMALL,
             text_color=COLOR_MUTED,
             anchor="w",
