@@ -73,8 +73,14 @@ def get_api_key() -> Optional[str]:
         return None
 
 
-def set_api_key(key: str) -> None:
-    keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, key)
+def set_api_key(key: str) -> bool:
+    """Store the API key via keyring. Returns True on success, False if the keyring backend is unavailable."""
+    try:
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, key)
+        return True
+    except Exception as exc:
+        logger.error("Failed to save API key to keyring: %s", exc)
+        return False
 
 
 def clear_api_key() -> None:

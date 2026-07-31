@@ -60,7 +60,7 @@ def test_load_settings_rejects_unknown_engine(isolated_settings_path):
 
 def test_api_key_round_trips(fake_keyring):
     assert settings_module.get_api_key() is None
-    settings_module.set_api_key("sk-test-123")
+    assert settings_module.set_api_key("sk-test-123") is True
     assert settings_module.get_api_key() == "sk-test-123"
     settings_module.clear_api_key()
     assert settings_module.get_api_key() is None
@@ -68,3 +68,10 @@ def test_api_key_round_trips(fake_keyring):
 
 def test_clear_api_key_when_none_set_does_not_raise(fake_keyring):
     settings_module.clear_api_key()  # must not raise
+
+
+def test_set_api_key_returns_false_on_keyring_failure(monkeypatch):
+    def failing_set(service, account, password):
+        raise RuntimeError("keyring backend unavailable")
+    monkeypatch.setattr(settings_module.keyring, "set_password", failing_set)
+    assert settings_module.set_api_key("sk-test") is False
