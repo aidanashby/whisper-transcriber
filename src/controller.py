@@ -25,7 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from .transcription_worker import TranscriptionCallbacks, TranscriptionWorker
+from .providers.base import TranscriptionCallbacks
+from .providers.local import LocalWhisperProvider
 from .ui.constants import PARAGRAPH_GAP, QUEUE_POLL_MS
 
 if TYPE_CHECKING:
@@ -100,7 +101,7 @@ class AppController:
         self.transcriptions: Dict[str, str]  = {}  # path → final formatted text
         self.partial_texts: Dict[str, str]   = {}  # path → accumulated streaming text
 
-        self.worker = TranscriptionWorker()
+        self.provider = LocalWhisperProvider()
         self._queue: queue.Queue = queue.Queue()
 
         self._is_running: bool = False
@@ -183,7 +184,7 @@ class AppController:
         """Start transcribing all files that aren't already complete."""
         if self._is_running or not self.file_entries:
             return
-        if not self.worker.model_loaded:
+        if not self.provider.ready:
             return
 
         # Only queue files not yet transcribed (allow re-running after Stop).
@@ -211,13 +212,13 @@ class AppController:
             on_segment      = lambda p, t:      self._queue.put(("segment",  p, t)),
         )
 
-        self.worker.transcribe_batch(pending, callbacks)
+        self.provider.transcribe_batch(pending, callbacks)
 
     def pause_transcription(self) -> None:
         if not self._is_running or self._is_paused:
             return
         self._is_paused = True
-        self.worker.pause()
+        self.provider.pause()
         if self.left_panel:
             self.left_panel.set_running(running=True, paused=True)
 
@@ -225,7 +226,7 @@ class AppController:
         if not self._is_running or not self._is_paused:
             return
         self._is_paused = False
-        self.worker.resume()
+        self.provider.resume()
         if self.left_panel:
             self.left_panel.set_running(running=True, paused=False)
 
@@ -238,7 +239,7 @@ class AppController:
         """
         if not self._is_running:
             return
-        self.worker.stop()
+        self.provider.stop()
 
     # ── Queue polling (UI thread) ─────────────────────────────────────────────
 
@@ -340,8 +341,8 @@ class AppController:
 
         def _load():
             try:
-                self.worker.load_model(model_dir)
-                self._queue.put(("model_loaded", self.worker.device))
+                self.provider.load_model(model_dir)
+                self._queue.put(("model_loaded", self.provider.device))
             except Exception as exc:
                 logger.exception("Model load failed")
                 self._queue.put(("model_error", str(exc)))

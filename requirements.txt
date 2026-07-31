@@ -9,3 +9,6 @@ pyinstaller>=6.0.0
 # ctranslate2 does not bundle these; the nvidia packages provide them.
 nvidia-cublas-cu12>=12.3
 nvidia-cuda-runtime-cu12>=12.3
+
+# Test tooling
+pytest>=7.4.0
