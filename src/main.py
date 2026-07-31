@@ -110,6 +110,7 @@ def main() -> None:
     ctk.set_appearance_mode("light")
     ctk.set_default_color_theme("green")
 
+    from . import settings as settings_module
     from .controller import AppController
     from .app import WhisperApp
 
@@ -119,21 +120,25 @@ def main() -> None:
     # WhisperApp calls self.withdraw() in __init__ to stay hidden during setup.
     app = WhisperApp(controller)
 
+    # Settings decide the whole startup path: the OpenAI engine needs no local
+    # model, so it must never be blocked behind the model-download dialog, and
+    # must never show the local-only "Loading model" button state.
+    cfg = settings_module.load_settings()
+
     def _start_app() -> None:
-        """Reveal the main window and begin async model loading."""
+        """Reveal the main window and begin provider readiness checks."""
         app.deiconify()
         app.lift()
         app.focus_force()
-        # Show "Loading model…" until the worker reports ready.
-        app.left_panel._start_btn.configure(text="Loading model\u2026", state="disabled")
-        logger.info("Starting async model load from %s", MODEL_DIR)
+        if cfg.engine == "local":
+            # Local engine loads a model in the background — show a loading
+            # state until AppController posts "provider_ready"/"provider_error".
+            app.left_panel._start_btn.configure(text="Loading model\u2026", state="disabled")
+        logger.info("Initializing provider for engine=%s", cfg.engine)
         controller.initialize_provider(str(MODEL_DIR))
 
-    if model_is_cached(MODEL_DIR):
-        logger.info("Model already cached — showing main window.")
-        _start_app()
-    else:
-        logger.info("Model not cached — showing download dialog.")
+    if cfg.engine == "local" and not model_is_cached(MODEL_DIR):
+        logger.info("Local engine selected, model not cached — showing download dialog.")
 
         from .ui.model_download_dialog import ModelDownloadDialog
 
@@ -152,6 +157,9 @@ def main() -> None:
             on_complete=on_download_complete,
             on_cancel=on_download_cancel,
         )
+    else:
+        logger.info("Showing main window (engine=%s).", cfg.engine)
+        _start_app()
 
     logger.info("Entering Tk event loop.")
     try:
