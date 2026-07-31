@@ -106,7 +106,7 @@ class WhisperApp(TkinterDnD.Tk):
     def _on_close(self) -> None:
         """Gracefully stop any running transcription before quitting."""
         logger.info("Window close requested.")
-        if self.controller.provider.is_running:
+        if self.controller.provider is not None and self.controller.provider.is_running:
             self.controller.stop_transcription()
             # Give the worker thread a moment to cleanly finish.
             self.after(300, self.destroy)

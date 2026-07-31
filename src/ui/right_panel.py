@@ -47,6 +47,7 @@ from .constants import (
     FONT_BODY,
     FONT_HEADING,
     FONT_PENDING,
+    FONT_SMALL,
     PANEL_BG,
 )
 
@@ -68,7 +69,7 @@ class RightPanel(ctk.CTkFrame):
         super().__init__(parent, fg_color=PANEL_BG, corner_radius=10)
         self._controller    = controller
         self._current_path: Optional[str] = None
-        self._device: str   = "cpu"
+        self._engine_label: str = "CPU"
 
         # Streaming state
         self._streaming:     bool          = False
@@ -97,6 +98,15 @@ class RightPanel(ctk.CTkFrame):
             anchor="w",
         )
         self._heading.pack(fill="x", padx=16, pady=(12, 4))
+
+        self._privacy_lbl = ctk.CTkLabel(
+            self._heading_frame,
+            text="",
+            font=FONT_SMALL,
+            text_color=COLOR_MUTED,
+            anchor="w",
+        )
+        self._privacy_lbl.pack(fill="x", padx=16, pady=(0, 8))
 
         # ── Action buttons ────────────────────────────────────────────────────
         self._btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -135,9 +145,18 @@ class RightPanel(ctk.CTkFrame):
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def set_device(self, device: str) -> None:
-        """Called once the model has loaded so the pending label can name GPU/CPU."""
-        self._device = device
+    def set_engine_label(self, label: str) -> None:
+        """
+        Called once the active provider is ready, to name it in the UI
+        (e.g. 'GPU', 'CPU', 'OpenAI') and to update the privacy notice.
+        """
+        self._engine_label = label
+        privacy_text = (
+            "Audio is securely uploaded to OpenAI for transcription."
+            if label == "OpenAI"
+            else "Audio never leaves this computer."
+        )
+        self._privacy_lbl.configure(text=privacy_text)
 
     def show(self, path: str, text: Optional[str], state: str = "idle") -> None:
         """
@@ -263,9 +282,8 @@ class RightPanel(ctk.CTkFrame):
         self._heading.configure(text=filename)
         self._heading_frame.pack(side="top", fill="x")
 
-        device_label = "GPU" if self._device == "cuda" else "CPU"
         self._placeholder.configure(
-            text=f"Transcription pending using {device_label}…",
+            text=f"Transcription pending using {self._engine_label}…",
             font=FONT_PENDING,
             text_color=COLOR_PENDING,
         )
@@ -285,8 +303,7 @@ class RightPanel(ctk.CTkFrame):
         self._placeholder.place(relx=0.5, rely=0.58, anchor="center")
 
     def _stream_heading(self, filename: str) -> str:
-        device_label = "GPU" if self._device == "cuda" else "CPU"
-        return f"{filename}  ·  transcribing on {device_label}"
+        return f"{filename}  ·  transcribing on {self._engine_label}"
 
     # ── Streaming cursor helpers ───────────────────────────────────────────────
 

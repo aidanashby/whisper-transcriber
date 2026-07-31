@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from .providers.base import TranscriptionCallbacks
+from . import settings as settings_module
+from .providers.base import TranscriptionCallbacks, TranscriptionProvider
 from .providers.local import LocalWhisperProvider
+from .providers.openai_provider import OpenAIProvider
 from .ui.constants import PARAGRAPH_GAP, QUEUE_POLL_MS
 
 if TYPE_CHECKING:
@@ -101,7 +103,7 @@ class AppController:
         self.transcriptions: Dict[str, str]  = {}  # path → final formatted text
         self.partial_texts: Dict[str, str]   = {}  # path → accumulated streaming text
 
-        self.provider = LocalWhisperProvider()
+        self.provider: Optional["TranscriptionProvider"] = None
         self._queue: queue.Queue = queue.Queue()
 
         self._is_running: bool = False
@@ -184,7 +186,7 @@ class AppController:
         """Start transcribing all files that aren't already complete."""
         if self._is_running or not self.file_entries:
             return
-        if not self.provider.ready:
+        if self.provider is None or not self.provider.ready:
             return
 
         # Only queue files not yet transcribed (allow re-running after Stop).
@@ -199,7 +201,9 @@ class AppController:
         self._is_paused  = False
 
         if self.left_panel:
-            self.left_panel.set_running(running=True, paused=False)
+            self.left_panel.set_running(
+                running=True, paused=False, supports_pause=self.provider.supports_pause
+            )
 
         # Wire up thread-safe callbacks that enqueue messages.
         callbacks = TranscriptionCallbacks(
@@ -215,20 +219,24 @@ class AppController:
         self.provider.transcribe_batch(pending, callbacks)
 
     def pause_transcription(self) -> None:
-        if not self._is_running or self._is_paused:
+        if self.provider is None or not self._is_running or self._is_paused:
             return
         self._is_paused = True
         self.provider.pause()
         if self.left_panel:
-            self.left_panel.set_running(running=True, paused=True)
+            self.left_panel.set_running(
+                running=True, paused=True, supports_pause=self.provider.supports_pause
+            )
 
     def resume_transcription(self) -> None:
-        if not self._is_running or not self._is_paused:
+        if self.provider is None or not self._is_running or not self._is_paused:
             return
         self._is_paused = False
         self.provider.resume()
         if self.left_panel:
-            self.left_panel.set_running(running=True, paused=False)
+            self.left_panel.set_running(
+                running=True, paused=False, supports_pause=self.provider.supports_pause
+            )
 
     def stop_transcription(self) -> None:
         """
@@ -237,7 +245,7 @@ class AppController:
         The worker finishes the active Whisper call, sends on_cancelled for
         remaining files, then fires on_all_complete.  The UI resets then.
         """
-        if not self._is_running:
+        if self.provider is None or not self._is_running:
             return
         self.provider.stop()
 
@@ -259,19 +267,19 @@ class AppController:
     def _dispatch(self, msg: tuple) -> None:
         kind = msg[0]
 
-        if kind == "model_loaded":
-            device = msg[1] if len(msg) > 1 else "cpu"
+        if kind == "provider_ready":
+            label = msg[1] if len(msg) > 1 else "CPU"
             if self.left_panel:
-                self.left_panel.set_model_ready(True)
+                self.left_panel.set_provider_ready(True)
             if self.right_panel:
-                self.right_panel.set_device(device)
+                self.right_panel.set_engine_label(label)
             return
 
-        if kind == "model_error":
+        if kind == "provider_error":
             err = msg[1]
-            logger.error("Model load failed: %s", err)
+            logger.error("Provider failed to become ready: %s", err)
             if self.left_panel:
-                self.left_panel.set_model_ready(False, error=err)
+                self.left_panel.set_provider_ready(False, "Model load failed")
             return
 
         if kind == "start":
@@ -330,21 +338,53 @@ class AppController:
         if self.left_panel:
             self.left_panel.update_row_state(path, state, label)
 
-    # ── Model loading helpers ─────────────────────────────────────────────────
+    # ── Provider selection / readiness ────────────────────────────────────────
 
-    def load_model_async(self, model_dir: str) -> None:
+    def initialize_provider(self, model_dir: str) -> None:
         """
-        Load the Whisper model in a background thread.
-        Posts "model_loaded" or "model_error" to the queue when done.
+        Build self.provider from persisted settings and begin readiness checks.
+
+        Called once at startup (main.py) and again whenever the user changes
+        engine or model in the Settings dialog.
+        """
+        cfg = settings_module.load_settings()
+
+        if cfg.engine == "local":
+            self.provider = LocalWhisperProvider()
+            self._load_local_model_async(model_dir)
+            return
+
+        api_key = settings_module.get_api_key()
+        if not api_key:
+            self.provider = None
+            if self.left_panel:
+                self.left_panel.set_provider_ready(False, "Set OpenAI API key to start")
+            return
+
+        self.provider = OpenAIProvider(api_key=api_key, model=cfg.openai_model)
+        if self.right_panel:
+            self.right_panel.set_engine_label("OpenAI")
+        if self.left_panel:
+            self.left_panel.set_provider_ready(True)
+
+    def _load_local_model_async(self, model_dir: str) -> None:
+        """
+        Load the local Whisper model in a background thread.
+        Posts "provider_ready" or "provider_error" to the queue when done.
         """
         import threading
 
         def _load():
             try:
                 self.provider.load_model(model_dir)
-                self._queue.put(("model_loaded", self.provider.device))
+                label = "GPU" if self.provider.device == "cuda" else "CPU"
+                self._queue.put(("provider_ready", label))
             except Exception as exc:
                 logger.exception("Model load failed")
-                self._queue.put(("model_error", str(exc)))
+                self._queue.put(("provider_error", str(exc)))
 
         threading.Thread(target=_load, daemon=True, name="ModelLoader").start()
+
+    @property
+    def is_running(self) -> bool:
+        return self._is_running

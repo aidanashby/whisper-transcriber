@@ -127,7 +127,7 @@ def main() -> None:
         # Show "Loading model…" until the worker reports ready.
         app.left_panel._start_btn.configure(text="Loading model\u2026", state="disabled")
         logger.info("Starting async model load from %s", MODEL_DIR)
-        controller.load_model_async(str(MODEL_DIR))
+        controller.initialize_provider(str(MODEL_DIR))
 
     if model_is_cached(MODEL_DIR):
         logger.info("Model already cached — showing main window.")
