@@ -2,7 +2,7 @@
 
 All notable changes to Whisper Transcriber are documented here.
 
-## [1.1.0] - 2026-07-31
+## [1.2.0] - 2026-07-31
 
 ### Added
 - Dual transcription engine support: choose between Local (offline, faster-whisper)
@@ -29,6 +29,26 @@ All notable changes to Whisper Transcriber are documented here.
 - Saving or clearing the API key now shows a clear, colour-coded confirmation
   instead of an easy-to-miss status line.
 - A hung OpenAI connection no longer blocks the Stop button indefinitely.
+
+## [1.1.0] - 2026-04-30
+
+### Added
+- Live transcription streaming: text now appears in the right panel as each
+  segment is decoded, rather than all at once at the end. A cycling cursor
+  (`/`, `|`, `\`, `-`) indicates transcription is in progress. Newly arrived
+  text flashes briefly in pale yellow as it lands. Copy and Save buttons are
+  hidden until the full transcript is ready.
+- Per-file progress bar: each file row in the left panel shows a split
+  progress indicator, updating in real time as segments are processed. A
+  slightly darker green marks fully transcribed files.
+- GPU / CPU indicator: the right panel heading shows which device is being
+  used during transcription (e.g. `file.wav · transcribing on GPU`).
+
+### Fixed
+- Left and right panels are now strictly 1/3 and 2/3 of the window width.
+  Previously the split shifted whenever a file with a long name was selected.
+- Selecting a file that hasn't been queued yet now shows "Press Start
+  Transcription to begin" rather than "Transcription pending…".
 
 ## [1.0.1] - 2026-03-27
 
