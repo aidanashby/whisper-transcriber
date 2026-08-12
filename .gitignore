@@ -34,3 +34,6 @@ pytest-of-*/
 # Distribution archives
 *.zip
 *.exe
+
+# Claude Code worktrees
+.claude/worktrees/
