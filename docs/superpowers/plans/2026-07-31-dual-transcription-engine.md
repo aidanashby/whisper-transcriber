@@ -170,8 +170,7 @@ def test_local_whisper_provider_satisfies_protocol():
 
 - [ ] **Step 4: Run the test to verify it fails (no pytest yet)**
 
-Run: `pip install pytest>=7.4.0` then `pytest tests/test_providers.py -v`
-Expected at this point: PASS is actually likely once Steps 1-2 are done correctly — if it fails, the failure must be an `AttributeError`/`ImportError` pointing at a typo in Step 1 or 2, not a missing dependency. Fix any such error before proceeding.
+Run: `pip install pytest>=7.4.0` then `pytest tests/test_providers.py -v` Expected at this point: PASS is actually likely once Steps 1-2 are done correctly — if it fails, the failure must be an `AttributeError`/`ImportError` pointing at a typo in Step 1 or 2, not a missing dependency. Fix any such error before proceeding.
 
 - [ ] **Step 5: Update `controller.py` to use the provider**
 
@@ -181,8 +180,7 @@ In `src/controller.py`:
   from .providers.base import TranscriptionCallbacks
   from .providers.local import LocalWhisperProvider
   ```
-- Line 103: replace `self.worker = TranscriptionWorker()` with `self.provider = LocalWhisperProvider()`
-  (this is temporary — Task 4 replaces this with `self.provider = None` plus an `initialize_provider()` call from `main.py`; for this task, keep the app working end-to-end with the rename alone)
+- Line 103: replace `self.worker = TranscriptionWorker()` with `self.provider = LocalWhisperProvider()` (this is temporary — Task 4 replaces this with `self.provider = None` plus an `initialize_provider()` call from `main.py`; for this task, keep the app working end-to-end with the rename alone)
 - Line 186: `if not self.worker.model_loaded:` → `if not self.provider.ready:`
 - Line 214: `self.worker.transcribe_batch(pending, callbacks)` → `self.provider.transcribe_batch(pending, callbacks)`
 - Line 220: `self.worker.pause()` → `self.provider.pause()`
@@ -397,8 +395,7 @@ def test_clear_api_key_when_none_set_does_not_raise(fake_keyring):
 
 - [ ] **Step 3: Run the tests to verify they fail, then pass**
 
-Run: `pytest tests/test_settings.py -v`
-Expected before Step 1/2 code exists: collection error (`src.settings` not found). After both steps: all 6 tests PASS.
+Run: `pytest tests/test_settings.py -v` Expected before Step 1/2 code exists: collection error (`src.settings` not found). After both steps: all 6 tests PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -672,8 +669,7 @@ def test_successful_transcription_wraps_text_in_simple_segment(tmp_path, fake_au
 
 - [ ] **Step 3: Run the tests**
 
-Run: `pip install openai>=1.30.0` then `pytest tests/test_openai_provider.py -v`
-Expected: all 3 tests PASS.
+Run: `pip install openai>=1.30.0` then `pytest tests/test_openai_provider.py -v` Expected: all 3 tests PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -808,8 +804,7 @@ Add a public read-only property so other modules (the Settings dialog, Task 6) d
 
 - [ ] **Step 4: Add a manual re-verification of Task 1's tests**
 
-Run: `pytest tests/test_providers.py -v`
-Expected: still PASS — `initialize_provider` didn't change `LocalWhisperProvider` itself, only how the controller constructs it.
+Run: `pytest tests/test_providers.py -v` Expected: still PASS — `initialize_provider` didn't change `LocalWhisperProvider` itself, only how the controller constructs it.
 
 Manual test: `python run.py` — confirm Local engine still starts, loads the model, and transcribes exactly as before. (This won't yet exercise the OpenAI path or Settings dialog — those arrive in Tasks 5-8. This task alone must not regress Local.)
 
@@ -1385,8 +1380,7 @@ pytest>=7.4.0
 
 - [ ] **Step 2: Run the full test suite one more time**
 
-Run: `pytest tests/ -v`
-Expected: all tests across `test_providers.py`, `test_settings.py`, `test_openai_provider.py` PASS.
+Run: `pytest tests/ -v` Expected: all tests across `test_providers.py`, `test_settings.py`, `test_openai_provider.py` PASS.
 
 - [ ] **Step 3: Add a CHANGELOG entry**
 

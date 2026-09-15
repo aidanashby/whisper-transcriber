@@ -1,8 +1,6 @@
 # Architecture & Implementation Decisions
 
-This document records the key technical choices made during development and
-the reasoning behind them.  Alternatives that were evaluated but rejected are
-also listed.
+This document records the key technical choices made during development and the reasoning behind them.  Alternatives that were evaluated but rejected are also listed.
 
 ---
 
@@ -35,8 +33,7 @@ with CTranslate2 backend.
 | medium | ~2 GB (float16) | Noticeably lower accuracy; not appropriate for a production transcription tool |
 | tiny / base / small | < 1 GB | Speed at the expense of accuracy; not suitable |
 
-With 8 GB VRAM, `large-v3` runs comfortably at `float16`.  On CPU it runs at
-`int8` (~2 GB RAM), which is fast enough for practical use.
+With 8 GB VRAM, `large-v3` runs comfortably at `float16`.  On CPU it runs at `int8` (~2 GB RAM), which is fast enough for practical use.
 
 ---
 
@@ -117,8 +114,7 @@ With 8 GB VRAM, `large-v3` runs comfortably at `float16`.  On CPU it runs at
 
 ## 9. Features deliberately excluded
 
-The following features were considered but intentionally excluded to keep the
-codebase focused:
+The following features were considered but intentionally excluded to keep the codebase focused:
 
 - Language selection (Whisper auto-detects language)
 - Settings persistence (no settings to save)
