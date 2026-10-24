@@ -1,0 +1,23 @@
+{
+  "dependencies": [
+    {
+      "name": "Python",
+      "check": { "run": "python --version" },
+      "install": "winget install --id Python.Python.3.12 -e --accept-package-agreements --accept-source-agreements"
+    },
+    {
+      "name": "NSIS",
+      "purpose": "Lets build.bat make an installer instead of a zip; adds its folder to PATH",
+      "optional": true,
+      "check": { "run": "makensis /VERSION" },
+      "install": "winget install --id NSIS.NSIS -e --accept-package-agreements --accept-source-agreements && powershell -NoProfile -Command \"$d = ${env:ProgramFiles(x86)} + '\\NSIS'; $p = [Environment]::GetEnvironmentVariable('Path','User'); if (($p -split ';') -notcontains $d) { [Environment]::SetEnvironmentVariable('Path', $p.TrimEnd(';') + ';' + $d, 'User') }\""
+    },
+    {
+      "name": "Python packages",
+      "purpose": "faster-whisper, CustomTkinter, PyInstaller and the CUDA runtime (several GB), into the system Python as build.bat expects",
+      "perRepo": true,
+      "check": { "run": "python -c \"import faster_whisper, customtkinter, tkinterdnd2, keyring, openai, PyInstaller\"" },
+      "install": "python -m pip install -r requirements.txt pytest httpx"
+    }
+  ]
+}
