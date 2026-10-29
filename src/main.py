@@ -36,17 +36,6 @@ MODEL_DIR = APP_DATA / "models"
 LOG_FILE  = APP_DATA / "transcription.log"
 
 
-def resource_path(relative: str) -> str:
-    """
-    Return the absolute path to a bundled resource.
-
-    In a PyInstaller one-dir bundle the extracted files live under sys._MEIPASS.
-    In a normal Python run they live relative to this file's parent directory.
-    """
-    base = getattr(sys, "_MEIPASS", Path(__file__).parent.parent)
-    return str(Path(base) / relative)
-
-
 def setup_logging() -> None:
     """Configure root logger: rotating file + stderr (dev convenience)."""
     APP_DATA.mkdir(parents=True, exist_ok=True)
