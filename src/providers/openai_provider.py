@@ -58,7 +58,9 @@ class OpenAIProvider:
         self._thread.start()
 
     def _run(self, paths: List[str], callbacks: TranscriptionCallbacks) -> None:
-        for path in paths:
+        # Popped one at a time: the caller may reorder or remove waiting paths.
+        while paths:
+            path = paths.pop(0)
             if self._stop_event.is_set():
                 callbacks.on_cancelled(path)
                 continue

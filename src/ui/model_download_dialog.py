@@ -24,12 +24,12 @@ from __future__ import annotations
 
 import logging
 import threading
-from pathlib import Path
 from typing import Callable
 
 import customtkinter as ctk
 from faster_whisper import WhisperModel
 
+from .chrome import style_dialog
 from .constants import (
     BTN_DANGER_COLOR,
     BTN_DANGER_HOVER,
@@ -81,6 +81,7 @@ class ModelDownloadDialog(ctk.CTkToplevel):
         self.geometry("480x240")
         self.resizable(False, False)
         self.configure(fg_color=PANEL_BG)
+        style_dialog(self)
 
         # Prevent the dialog from being closed via the X button (use Cancel).
         self.protocol("WM_DELETE_WINDOW", self._on_cancel_clicked)
@@ -147,6 +148,7 @@ class ModelDownloadDialog(ctk.CTkToplevel):
             command=self._on_cancel_clicked,
             fg_color=BTN_DANGER_COLOR,
             hover_color=BTN_DANGER_HOVER,
+            text_color="#ffffff",
             width=100,
         ).pack(side="left")
 

@@ -35,7 +35,7 @@ echo.
 :: ── 3. Generate application icon ─────────────────────────────────────────────
 
 echo [2/5] Generating icon...
-if not exist assets\icon.ico (
+if not exist assets\icon.png (
     python create_icon.py
     if %ERRORLEVEL% neq 0 (
         echo [WARN]  Icon generation failed -- build will continue without a custom icon.

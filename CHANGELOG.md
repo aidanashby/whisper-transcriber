@@ -2,6 +2,29 @@
 
 All notable changes to Whisper Transcriber are documented here.
 
+## [1.3.0] - 2026-11-26
+
+### Changed
+- New dark look after Audacity 4, with green (#34c26b) highlights that match a new icon; all text and button colours meet WCAG AA.
+- Slim custom title bar in the panel colour. Windows snapping and the minimise and maximise animations still work.
+- Denser layout; the window opens at 900 × 560.
+- The settings cog (icon only) sits beside Start transcription, replacing the top bar.
+- Settings opens over the main window, on the same screen, and is only as tall as its content.
+- "Free after download" now reads "free".
+- Removed the "Audio never leaves this computer" line under the file name.
+
+### Added
+- Drag the edge between the panels to resize the file list.
+- Drag files up or down to change the transcription order, including files still waiting in a running batch.
+- Delete a file with the × on its row or the Delete key.
+- Play any WAV with a playhead bar; click or drag the bar to seek.
+- Edit finished transcripts; copy and save use the edited text.
+- Save as .md.
+- A saved OpenAI key shows as dots plus its last four characters.
+- Running from source now finds the CUDA DLLs from the nvidia pip packages, so GPU transcription works without a build.
+- A window snapped next to a join between screens with different scaling meets the join exactly (no invisible side borders; a 6 px side margin resizes it).
+- Transcription errors show in the transcript pane, and long error text no longer spills over the file name.
+
 ## [1.2.0] - 2026-07-31
 
 ### Added

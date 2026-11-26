@@ -37,3 +37,4 @@ pytest-of-*/
 
 # Claude Code worktrees
 .claude/worktrees/
+assets/icon.png

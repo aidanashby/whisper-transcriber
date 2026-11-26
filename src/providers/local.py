@@ -11,12 +11,34 @@ Pause/resume/stop are implemented with threading.Event primitives:
 """
 
 import logging
+import os
+import sys
 import threading
 import wave
 from pathlib import Path
 from typing import List, Optional
 
-from faster_whisper import WhisperModel
+
+def _expose_cuda_dlls() -> None:
+    """From source on Windows, let CTranslate2 find the CUDA DLLs that the
+    nvidia-* pip packages install. The built app bundles them next to the
+    exe instead. CTranslate2 loads cuBLAS on first inference with a plain
+    LoadLibrary, which searches PATH, so PATH is extended as well."""
+    if os.name != "nt" or getattr(sys, "frozen", False):
+        return
+    try:
+        import nvidia
+    except ImportError:
+        return   # CPU-only install
+    for root in nvidia.__path__:
+        for bin_dir in Path(root).glob("*/bin"):
+            os.add_dll_directory(str(bin_dir))
+            os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+
+
+_expose_cuda_dlls()
+
+from faster_whisper import WhisperModel  # noqa: E402  (after the DLL paths are set)
 
 from ..audio_processor import AudioProcessor
 from .base import TranscriptionCallbacks
@@ -120,7 +142,9 @@ class LocalWhisperProvider:
 
     def _run(self, paths: List[str], callbacks: TranscriptionCallbacks) -> None:
         """Worker thread main loop — processes files one by one."""
-        for path in paths:
+        # Popped one at a time: the caller may reorder or remove waiting paths.
+        while paths:
+            path = paths.pop(0)
             # ── Check for stop before starting each file ──────────────────
             if self._stop_event.is_set():
                 callbacks.on_cancelled(path)

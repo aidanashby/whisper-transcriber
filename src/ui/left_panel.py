@@ -1,305 +1,256 @@
 """
-LeftPanel — the file-management side of the two-panel layout.
+LeftPanel — the sidebar: file list, Start/Pause/Stop and the settings cog.
 
-Structure
-─────────
+  ┌ Files ─────────────────── [+ Add files] ┐
+  │ FileRow …  (drag to reorder, × to delete) │
+  │ FileRow …                                 │
+  │   (empty: "Drop WAV files here")          │
+  ├───────────────────────────────────────────┤
+  │ [ Start transcription        ] [⚙]        │
+  └───────────────────────────────────────────┘
 
-  ┌─ LeftPanel (CTkFrame) ──────────────────────────────────────────┐
-  │  ┌─ content_frame (grid row 0, weight=1) ──────────────────────┐ │
-  │  │  ┌─ file_list_frame (CTkScrollableFrame) ──────────────────┐ │ │
-  │  │  │  FileRow …                                               │ │ │
-  │  │  │  FileRow …                                               │ │ │
-  │  │  └─────────────────────────────────────────────────────────┘ │ │
-  │  │  ┌─ drop_zone (CTkFrame) ───────────────────────────────────┐ │ │
-  │  │  │  "Drag & drop WAV files here"                            │ │ │
-  │  │  │  [Add files]                                             │ │ │
-  │  │  │  ← rejection message appears here briefly →              │ │ │
-  │  │  └─────────────────────────────────────────────────────────┘ │ │
-  │  └─────────────────────────────────────────────────────────────┘ │
-  │  ┌─ button_bar (grid row 1, weight=0) ──────────────────────────┐ │
-  │  │  [Start Transcription]  — or —  [Pause] [Stop]               │ │
-  │  └─────────────────────────────────────────────────────────────┘ │
-  └─────────────────────────────────────────────────────────────────┘
-
-When the file list is empty the drop zone fills the content area.
-When files are present the list occupies the top portion (min 40 % of
-available height) and the drop zone shrinks to fill remaining space below.
-
-Drag-and-drop is registered on the panel, the file list, and the drop zone
-so the user can drop anywhere on the left side.
+Drag-and-drop of files from Explorer is registered on the whole panel.
+Dragging a row up or down changes the transcription order, including for
+files still waiting in a running batch.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import tkinter as tk
 from tkinter import filedialog
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List
 
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES
 
+from .chrome import icon_font
 from .constants import (
-    APP_BG,
+    ACCENT,
     BTN_DANGER_COLOR,
     BTN_DANGER_HOVER,
-    BTN_NEUTRAL_COLOR,
-    BTN_NEUTRAL_HOVER,
-    BTN_START_COLOR,
-    BTN_START_HOVER,
     COLOR_MUTED,
-    DROP_HOVER_BG,
-    DROP_HOVER_BORDER,
-    DROP_NORMAL_BG,
-    DROP_NORMAL_BORDER,
+    DANGER_TEXT,
+    DISABLED_BG,
+    FIELD_BG,
     FONT_BODY,
+    FONT_BOLD,
     FONT_SMALL,
     PANEL_BG,
     REJECT_MSG_DURATION_MS,
+    SLATE,
+    SLATE_HOVER,
 )
-from .file_row import FileRow
+from .file_row import ROW_HEIGHT, FileRow
 
 if TYPE_CHECKING:
     from ..controller import AppController, FileEntry
 
 logger = logging.getLogger(__name__)
 
+_ROW_GAP   = 1
+_PITCH     = ROW_HEIGHT + _ROW_GAP
+_DRAG_START_PX = 4
+_BTN_H     = 34
+
 
 class LeftPanel(ctk.CTkFrame):
-    """
-    The left one-third of the main window: file list + drop zone + controls.
-    """
-
-    def __init__(self, parent, controller: "AppController") -> None:
-        super().__init__(parent, fg_color=PANEL_BG, corner_radius=10)
+    def __init__(self, parent, controller: "AppController", on_settings: Callable[[], None]) -> None:
+        super().__init__(parent, fg_color=PANEL_BG, corner_radius=0)
         self._controller = controller
-        self._rows: Dict[str, FileRow] = {}  # path → FileRow widget
+        self._rows: Dict[str, FileRow] = {}
         self._provider_ready = False
-        self._is_paused   = False
+        self._is_paused = False
+        self._drag: dict | None = None
 
-        # ── Outer grid: content (row 0, expands) + button bar (row 1, fixed) ─
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0)
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
-        # ── Content frame (holds file list + drop zone) ───────────────────────
-        self._content = ctk.CTkFrame(self, fg_color=PANEL_BG)
-        self._content.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
-        self._content.grid_columnconfigure(0, weight=1)
-        # row weights adjusted dynamically by _refresh_layout()
-        self._content.grid_rowconfigure(0, weight=0)   # file list
-        self._content.grid_rowconfigure(1, weight=1)   # drop zone
+        # ── Header ────────────────────────────────────────────────────────────
+        head = ctk.CTkFrame(self, fg_color="transparent")
+        head.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 4))
+        ctk.CTkLabel(head, text="Files", font=FONT_BODY).pack(side="left", padx=(4, 0))
+        ctk.CTkButton(
+            head, text="+  Add files", command=self._browse_files, width=96, height=26,
+            fg_color=SLATE, hover_color=SLATE_HOVER, text_color="#f1f3f5", font=FONT_SMALL,
+        ).pack(side="right")
 
-        # ── File list ─────────────────────────────────────────────────────────
-        self._list_frame = ctk.CTkScrollableFrame(
-            self._content, fg_color=PANEL_BG, corner_radius=0
+        # ── List (doubles as the drop zone) ───────────────────────────────────
+        self._list_box = ctk.CTkFrame(self, fg_color=FIELD_BG, corner_radius=4,
+                                      border_width=1, border_color=FIELD_BG)
+        self._list_box.grid(row=1, column=0, sticky="nsew", padx=8)
+        self._list = ctk.CTkScrollableFrame(self._list_box, fg_color=FIELD_BG, corner_radius=0)
+        self._list.pack(fill="both", expand=True, padx=1, pady=1)
+        self._canvas = self._list._parent_canvas
+
+        self._empty_lbl = ctk.CTkLabel(
+            self._list_box, text="Drop WAV files here\nor click Add files",
+            text_color=COLOR_MUTED, font=FONT_BODY, fg_color=FIELD_BG, justify="center",
         )
-        self._list_frame.grid(row=0, column=0, sticky="nsew", padx=6, pady=(6, 0))
-        self._list_frame.grid_columnconfigure(0, weight=1)
-        self._list_frame.grid_remove()   # hidden until first file is added
+        self._drop_line = tk.Frame(self._list, bg=ACCENT, height=2)
 
-        # ── Drop zone ─────────────────────────────────────────────────────────
-        self._drop_zone = self._build_drop_zone()
-        self._drop_zone.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self._reject_lbl = ctk.CTkLabel(self, text="", text_color=DANGER_TEXT, font=FONT_SMALL, height=16)
+        self._reject_lbl.grid(row=2, column=0, sticky="w", padx=12)
 
         # ── Button bar ────────────────────────────────────────────────────────
-        self._btn_bar = self._build_button_bar()
-        self._btn_bar.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self._btn_bar = self._build_button_bar(on_settings)
+        self._btn_bar.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
 
-        # ── Register DnD targets ──────────────────────────────────────────────
-        for widget in (self, self._content, self._list_frame, self._drop_zone):
-            try:
-                widget.drop_target_register(DND_FILES)
-                widget.dnd_bind("<<Drop>>",      self._on_drop)
-                widget.dnd_bind("<<DragEnter>>", self._on_drag_enter)
-                widget.dnd_bind("<<DragLeave>>", self._on_drag_leave)
-            except Exception:
-                # tkinterdnd2 raises if the widget is not yet mapped — safe to ignore.
-                pass
-
+        for widget in (self, self._list_box, self._list, self._canvas, self._empty_lbl):
+            self._register_drop(widget)
         self._refresh_layout()
 
-    # ── Drop-zone construction ────────────────────────────────────────────────
+    # ── Construction ──────────────────────────────────────────────────────────
 
-    def _build_drop_zone(self) -> ctk.CTkFrame:
-        frame = ctk.CTkFrame(
-            self._content,
-            fg_color=DROP_NORMAL_BG,
-            border_width=2,
-            border_color=DROP_NORMAL_BORDER,
-            corner_radius=8,
-        )
-        frame.grid_rowconfigure((0, 1, 2, 3), weight=1)
-        frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            frame,
-            text="Drag & drop WAV files here",
-            text_color=COLOR_MUTED,
-            font=FONT_BODY,
-        ).grid(row=0, column=0, pady=(0, 4), sticky="s")
-
-        ctk.CTkButton(
-            frame,
-            text="Add files",
-            command=self._browse_files,
-            fg_color=BTN_NEUTRAL_COLOR,
-            hover_color=BTN_NEUTRAL_HOVER,
-            width=120,
-        ).grid(row=1, column=0, pady=(0, 8), sticky="n")
-
-        self._reject_lbl = ctk.CTkLabel(
-            frame, text="", text_color="#E53935", font=FONT_SMALL
-        )
-        self._reject_lbl.grid(row=2, column=0, pady=(0, 4))
-
-        return frame
-
-    # ── Button bar construction ───────────────────────────────────────────────
-
-    def _build_button_bar(self) -> ctk.CTkFrame:
+    def _build_button_bar(self, on_settings) -> ctk.CTkFrame:
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.grid_columnconfigure((0, 1), weight=1)
 
         self._start_btn = ctk.CTkButton(
-            bar,
-            text="Start Transcription",
-            fg_color=BTN_START_COLOR,
-            hover_color=BTN_START_HOVER,
-            state="disabled",
+            bar, text="Start transcription", state="disabled", height=_BTN_H, font=FONT_BOLD,
             command=self._controller.start_transcription,
-            height=40,
-            font=FONT_BODY,
         )
-        self._start_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
-
         self._pause_btn = ctk.CTkButton(
-            bar,
-            text="Pause",
-            fg_color=BTN_NEUTRAL_COLOR,
-            hover_color=BTN_NEUTRAL_HOVER,
-            command=self._toggle_pause,
-            height=40,
-            font=FONT_BODY,
+            bar, text="Pause", command=self._toggle_pause, height=_BTN_H, font=FONT_BODY,
+            fg_color=SLATE, hover_color=SLATE_HOVER, text_color="#f1f3f5",
         )
         self._stop_btn = ctk.CTkButton(
-            bar,
-            text="Stop",
-            fg_color=BTN_DANGER_COLOR,
-            hover_color=BTN_DANGER_HOVER,
-            command=self._controller.stop_transcription,
-            height=40,
-            font=FONT_BODY,
+            bar, text="Stop", command=self._controller.stop_transcription, height=_BTN_H, font=FONT_BODY,
+            fg_color=BTN_DANGER_COLOR, hover_color=BTN_DANGER_HOVER, text_color="#ffffff",
         )
-        # pause / stop are shown only while running — see set_running()
+        font = icon_font(15)
+        cog = ctk.CTkButton(
+            bar, text="" if font else "⚙", command=on_settings, width=_BTN_H, height=_BTN_H,
+            fg_color=SLATE, hover_color=SLATE_HOVER, text_color="#f1f3f5",
+            font=font or ("Segoe UI Symbol", 16),
+        )
+        cog.grid(row=0, column=2, padx=(6, 0))
+        self._start_btn.grid(row=0, column=0, columnspan=2, sticky="ew")
         return bar
+
+    def _register_drop(self, widget) -> None:
+        try:
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>",      self._on_drop)
+            widget.dnd_bind("<<DragEnter>>", lambda e: self._list_box.configure(border_color=ACCENT))
+            widget.dnd_bind("<<DragLeave>>", lambda e: self._list_box.configure(border_color=FIELD_BG))
+        except Exception:
+            # tkinterdnd2 raises if the widget is not yet mapped — safe to ignore.
+            pass
 
     # ── Public API (called by controller) ─────────────────────────────────────
 
     def add_row(self, entry: "FileEntry") -> None:
-        """Append a new FileRow for *entry* to the scrollable list."""
-        row = FileRow(
-            self._list_frame,
-            entry,
-            self._controller,
-        )
-        row.grid(
-            row=len(self._rows),
-            column=0,
-            sticky="ew",
-            padx=4,
-            pady=(0, 4),
-        )
-        self._list_frame.grid_columnconfigure(0, weight=1)
+        row = FileRow(self._list, entry, self._on_row_press, self._on_row_motion,
+                      self._on_row_release, self._controller.remove_file)
+        self._register_drop(row)
         self._rows[entry.path] = row
-        self._refresh_layout()
+        self._repack()
 
     def remove_row(self, path: str) -> None:
-        """Remove the row for *path* and re-grid remaining rows."""
         row = self._rows.pop(path, None)
         if row:
             row.destroy()
-        # Re-grid remaining rows in order to keep consistent row indices.
-        for idx, (_, r) in enumerate(self._rows.items()):
-            r.grid(row=idx, column=0, sticky="ew", padx=4, pady=(0, 4))
-        self._refresh_layout()
+        self._repack()
+
+    def reorder(self, paths: List[str]) -> None:
+        self._rows = {p: self._rows[p] for p in paths if p in self._rows}
+        self._repack()
+
+    def set_selected(self, path) -> None:
+        for p, row in self._rows.items():
+            row.set_selected(p == path)
 
     def update_row_state(self, path: str, state: str, message: str = "") -> None:
-        """Forward a state update to the matching FileRow."""
         row = self._rows.get(path)
         if row:
             row.set_state(state, message)
 
     def update_row_progress(self, path: str, percent: float) -> None:
-        """Forward a progress update (0.0–1.0) to the matching FileRow."""
         row = self._rows.get(path)
         if row:
             row.set_progress(percent)
 
     def refresh_start_button(self) -> None:
-        """Enable / disable 'Start Transcription' based on current state."""
-        has_files = bool(self._rows)
-        ready     = self._provider_ready and has_files
-        self._start_btn.configure(state="normal" if ready else "disabled")
+        ready = self._provider_ready and bool(self._rows)
+        self._start_btn.configure(
+            state="normal" if ready else "disabled",
+            fg_color=ACCENT if ready else DISABLED_BG,
+        )
 
     def set_provider_ready(self, ready: bool, not_ready_label: str = "Model load failed") -> None:
-        """
-        Called once the active provider finishes becoming ready (or fails).
-
-        For the local engine this means the Whisper model finished loading;
-        for OpenAI it means a valid API key is configured.
-        """
         self._provider_ready = ready
-        if ready:
-            self._start_btn.configure(text="Start Transcription")
-        else:
-            self._start_btn.configure(text=not_ready_label)
+        self._start_btn.configure(text="Start transcription" if ready else not_ready_label)
         self.refresh_start_button()
 
     def set_running(self, running: bool, paused: bool = False, supports_pause: bool = True) -> None:
-        """
-        Toggle between the 'Start' button and the running-state button(s).
-
-        running=True,  paused=False, supports_pause=True  → Pause + Stop
-        running=True,  paused=True,  supports_pause=True  → Resume + Stop
-        running=True,  supports_pause=False                → Stop only (full width)
-        running=False                                      → Start Transcription
-        """
+        """Start alone when idle; Pause + Stop (or Stop alone) while running."""
         self._is_paused = paused
-        if running:
-            self._start_btn.grid_remove()
-            if supports_pause:
-                self._pause_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=0)
-                self._stop_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=0)
-                self._pause_btn.configure(text="Resume" if paused else "Pause")
-            else:
-                self._pause_btn.grid_remove()
-                self._stop_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
-        else:
-            self._pause_btn.grid_remove()
-            self._stop_btn.grid_remove()
-            self._start_btn.grid(row=0, column=0, columnspan=2, sticky="ew", padx=0, pady=0)
+        self._start_btn.grid_remove()
+        self._pause_btn.grid_remove()
+        self._stop_btn.grid_remove()
+        if not running:
+            self._start_btn.grid(row=0, column=0, columnspan=2, sticky="ew")
             self.refresh_start_button()
+        elif supports_pause:
+            self._pause_btn.configure(text="Resume" if paused else "Pause")
+            self._pause_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
+            self._stop_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
+        else:
+            self._stop_btn.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────────────────────
+
+    def _repack(self) -> None:
+        for row in self._rows.values():
+            row.pack_forget()
+        for row in self._rows.values():
+            row.pack(fill="x", pady=(0, _ROW_GAP))
+        self._refresh_layout()
 
     def _refresh_layout(self) -> None:
-        """
-        Adjust row weights in the content frame based on whether files exist.
-
-        No files  → drop zone expands to fill everything (weight=1), list hidden.
-        Has files → list gets weight=2, drop zone gets weight=1.
-        """
-        has_files = bool(self._rows)
-
-        if has_files:
-            self._list_frame.grid()                          # show list
-            self._content.grid_rowconfigure(0, weight=2)    # list: more space
-            self._content.grid_rowconfigure(1, weight=1)    # drop zone: less
+        if self._rows:
+            self._empty_lbl.place_forget()
         else:
-            self._list_frame.grid_remove()                  # hide list
-            self._content.grid_rowconfigure(0, weight=0)    # list: no space
-            self._content.grid_rowconfigure(1, weight=1)    # drop zone fills all
+            self._empty_lbl.place(relx=0.5, rely=0.45, anchor="center")
+
+    # ── Row drag to reorder ───────────────────────────────────────────────────
+
+    def _on_row_press(self, row: FileRow, e) -> None:
+        self._drag = {"row": row, "y0": e.y_root, "moving": False, "index": None}
+
+    def _drop_index(self, y_root: int) -> int:
+        y = y_root - self._list.winfo_rooty()
+        return max(0, min(len(self._rows), round(y / _PITCH)))
+
+    def _on_row_motion(self, row: FileRow, e) -> None:
+        d = self._drag
+        if not d:
+            return
+        if not d["moving"] and abs(e.y_root - d["y0"]) < _DRAG_START_PX:
+            return
+        d["moving"] = True
+        row.configure(cursor="fleur")
+        # Scroll when dragging past the top or bottom of the visible list.
+        top, bottom = self._canvas.winfo_rooty(), self._canvas.winfo_rooty() + self._canvas.winfo_height()
+        if e.y_root < top + 8:
+            self._canvas.yview_scroll(-1, "units")
+        elif e.y_root > bottom - 8:
+            self._canvas.yview_scroll(1, "units")
+        d["index"] = self._drop_index(e.y_root)
+        self._drop_line.place(x=0, y=max(0, d["index"] * _PITCH - 1), relwidth=1)
+        self._drop_line.lift()
+
+    def _on_row_release(self, row: FileRow, e) -> None:
+        d, self._drag = self._drag, None
+        self._drop_line.place_forget()
+        row.configure(cursor="")
+        if d and d["moving"] and d["index"] is not None:
+            self._controller.move_file(row.path, d["index"])
+        else:
+            self._controller.select_file(row.path)
+
+    # ── Actions ───────────────────────────────────────────────────────────────
 
     def _toggle_pause(self) -> None:
         if self._is_paused:
@@ -308,7 +259,6 @@ class LeftPanel(ctk.CTkFrame):
             self._controller.pause_transcription()
 
     def _browse_files(self) -> None:
-        """Open a native file-picker for WAV files."""
         paths = filedialog.askopenfilenames(
             title="Select WAV files",
             filetypes=[("WAV audio", "*.wav"), ("All files", "*.*")],
@@ -316,33 +266,15 @@ class LeftPanel(ctk.CTkFrame):
         self._controller.add_files(list(paths))
 
     def _show_reject_msg(self, message: str) -> None:
-        """Briefly show *message* in the drop zone, then clear it."""
         self._reject_lbl.configure(text=message)
         self.after(REJECT_MSG_DURATION_MS, lambda: self._reject_lbl.configure(text=""))
-
-    # ── Drag-and-drop handlers ────────────────────────────────────────────────
 
     def _on_drop(self, event) -> None:
         raw_paths = self.tk.splitlist(event.data)
         wav_paths = [p for p in raw_paths if p.lower().endswith(".wav")]
         rejected  = len(raw_paths) - len(wav_paths)
-
         self._controller.add_files(wav_paths)
-        self._reset_drop_style()
-
+        self._list_box.configure(border_color=FIELD_BG)
         if rejected:
             plural = "s" if rejected > 1 else ""
             self._show_reject_msg(f"{rejected} non-WAV file{plural} ignored")
-
-    def _on_drag_enter(self, _event) -> None:
-        self._drop_zone.configure(
-            fg_color=DROP_HOVER_BG, border_color=DROP_HOVER_BORDER
-        )
-
-    def _on_drag_leave(self, _event) -> None:
-        self._reset_drop_style()
-
-    def _reset_drop_style(self) -> None:
-        self._drop_zone.configure(
-            fg_color=DROP_NORMAL_BG, border_color=DROP_NORMAL_BORDER
-        )

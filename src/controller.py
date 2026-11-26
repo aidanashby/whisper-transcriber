@@ -106,6 +106,11 @@ class AppController:
         self.provider: Optional["TranscriptionProvider"] = None
         self._queue: queue.Queue = queue.Queue()
 
+        # Paths still waiting in the running batch. The provider pops from
+        # this same list, so reordering or removing files changes what it
+        # does next.
+        self._pending: List[str] = []
+
         self._is_running: bool = False
         self._is_paused:  bool = False
 
@@ -148,8 +153,16 @@ class AppController:
             self.left_panel.refresh_start_button()
 
     def remove_file(self, path: str) -> None:
-        """Remove a file from the list (trash icon click)."""
-        self.file_entries = [e for e in self.file_entries if e.path != path]
+        """Remove a file from the list (× on the row, or the Delete key).
+        The file being transcribed can't be removed until it finishes."""
+        entry = next((e for e in self.file_entries if e.path == path), None)
+        if entry is None or entry.state == "processing":
+            return
+        self.file_entries.remove(entry)
+        try:
+            self._pending.remove(path)
+        except ValueError:
+            pass   # not waiting, or the worker popped it just now
         self.transcriptions.pop(path, None)
 
         if self.left_panel:
@@ -161,11 +174,34 @@ class AppController:
             if self.right_panel:
                 self.right_panel.clear()
 
+    def move_file(self, path: str, index: int) -> None:
+        """Move *path* to *index* (an insertion point counted before the
+        move, as the drop line shows it) in the list and in the batch order."""
+        entry = next((e for e in self.file_entries if e.path == path), None)
+        if entry is None:
+            return
+        old = self.file_entries.index(entry)
+        if index > old:
+            index -= 1
+        self.file_entries.pop(old)
+        self.file_entries.insert(index, entry)
+        order = [e.path for e in self.file_entries]
+        self._pending.sort(key=order.index)
+        if self.left_panel:
+            self.left_panel.reorder(order)
+
+    def update_transcription(self, path: str, text: str) -> None:
+        """Keep the user's corrections to a finished transcription."""
+        if path in self.transcriptions:
+            self.transcriptions[path] = text
+
     # ── Selection ─────────────────────────────────────────────────────────────
 
     def select_file(self, path: str) -> None:
         """Called when the user clicks a file row."""
         self.selected_path = path
+        if self.left_panel:
+            self.left_panel.set_selected(path)
         if not self.right_panel:
             return
         entry = next((e for e in self.file_entries if e.path == path), None)
@@ -178,7 +214,7 @@ class AppController:
             partial = self.partial_texts.get(path, "")
             self.right_panel.resume_stream(path, Path(path).name, partial)
         else:
-            self.right_panel.show(path, None, state)
+            self.right_panel.show(path, None, state, entry.error_msg if entry else "")
 
     # ── Transcription control ─────────────────────────────────────────────────
 
@@ -216,7 +252,8 @@ class AppController:
             on_segment      = lambda p, t:      self._queue.put(("segment",  p, t)),
         )
 
-        self.provider.transcribe_batch(pending, callbacks)
+        self._pending = pending
+        self.provider.transcribe_batch(self._pending, callbacks)
 
     def pause_transcription(self) -> None:
         if self.provider is None or not self._is_running or self._is_paused:
@@ -317,7 +354,9 @@ class AppController:
 
         elif kind == "error":
             path, msg_str = msg[1], msg[2]
-            self._set_entry_state(path, "error", msg_str[:50])
+            self._set_entry_state(path, "error", msg_str[:150])
+            if self.selected_path == path and self.right_panel:
+                self.right_panel.show(path, None, "error", msg_str[:150])
 
         elif kind == "cancelled":
             path = msg[1]
@@ -326,6 +365,7 @@ class AppController:
         elif kind == "all_done":
             self._is_running = False
             self._is_paused  = False
+            self._pending = []
             if self.left_panel:
                 self.left_panel.set_running(running=False)
 

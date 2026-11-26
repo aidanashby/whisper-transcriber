@@ -3,34 +3,33 @@ WhisperApp — the main application window.
 
 Inherits from TkinterDnD.Tk (not ctk.CTk) because tkinterdnd2 must wrap
 the root window to enable native Windows drag-and-drop.  CustomTkinter
-widgets work normally inside a TkinterDnD.Tk root — the appearance mode and
-colour theme are applied via ctk.set_* calls before any widget is created.
+widgets work normally inside a TkinterDnD.Tk root; the theme is applied by
+chrome.apply_theme() in main() before any widget is created.
 
 Layout
 ──────
-The window is split into two columns:
-  col 0 (weight 1) → LeftPanel  (1/3)
-  col 1 (weight 2) → RightPanel (2/3)
-
-Both panels fill the full height.  A small gap is added between them via
-padx so they don't appear glued together.
+  TitleBar (slim, custom; Windows only)
+  PanedWindow: LeftPanel (file list, Start + settings cog) | RightPanel
+The sash between the panels can be dragged to resize the sidebar.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import os
+import tkinter as tk
 from typing import TYPE_CHECKING
 
-import tkinter as tk
-
-import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD
 
+from .ui.chrome import APP_NAME, EDGE_GRIP, TitleBar, asset_path, dark_title_bar
 from .ui.constants import (
     APP_BG,
+    DEFAULT_SIDEBAR_WIDTH,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
+    MIN_SIDEBAR_WIDTH,
+    MIN_VIEWER_WIDTH,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
 )
@@ -48,77 +47,58 @@ class WhisperApp(TkinterDnD.Tk):
     """Root window with both panels laid out inside it."""
 
     def __init__(self, controller: "AppController") -> None:
-        # CustomTkinter appearance must be set before any widget is created.
-        ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("green")
-
         super().__init__()
         # Withdraw immediately to prevent a brief flash during first-run setup.
         # main() calls deiconify() once the app is ready to show.
         self.withdraw()
 
-        self.title("Whisper Transcriber")
+        self.title(APP_NAME)
         self.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.configure(bg=APP_BG)
+        self._set_icon()
+        dark_title_bar(self)
 
-        # Wire the controller back to this window before building panels
-        # so that the queue polling (which calls self.after()) can start.
         self.controller = controller
         controller.app  = self
 
-        # ── Top bar (settings gear) ──────────────────────────────────────────
-        _TOP_BAR_HEIGHT = 36
-        _top_bar = tk.Frame(self, bg=APP_BG)
-        _top_bar.place(x=0, y=0, relwidth=1, height=_TOP_BAR_HEIGHT)
+        if os.name == "nt":
+            TitleBar(self, self._icon_img).pack(fill="x")
 
-        ctk.CTkButton(
-            _top_bar,
-            text="⚙ Settings",
-            command=self._open_settings,
-            fg_color="transparent",
-            hover_color="#E0E0E0",
-            text_color="#333333",
-            width=100,
-            height=28,
-        ).place(relx=1.0, x=-8, y=4, anchor="ne")
+        panes = tk.PanedWindow(self, orient="horizontal", bg=APP_BG, sashwidth=4,
+                               bd=0, sashrelief="flat", sashcursor="sb_h_double_arrow")
+        panes.pack(fill="both", expand=True, padx=EDGE_GRIP, pady=(0, 4))
 
-        # ── Panels ────────────────────────────────────────────────────────────
-        # CTkFrame.place() forbids width/height pixel offsets, so we use plain
-        # tk.Frame wrappers for geometry.  The wrappers get strict 1/3 / 2/3
-        # relwidth fractions (with pixel padding); the CTk panels are packed
-        # inside and fill their wrapper entirely.
-        _PAD, _GAP = 8, 8
-        _left_wrap  = tk.Frame(self, bg=APP_BG)
-        _right_wrap = tk.Frame(self, bg=APP_BG)
+        self.left_panel  = LeftPanel(panes, controller, on_settings=self._open_settings)
+        self.right_panel = RightPanel(panes, controller)
+        panes.add(self.left_panel, minsize=MIN_SIDEBAR_WIDTH, width=DEFAULT_SIDEBAR_WIDTH, stretch="never")
+        panes.add(self.right_panel, minsize=MIN_VIEWER_WIDTH, stretch="always")
 
-        _left_wrap.place(
-            x=_PAD, y=_TOP_BAR_HEIGHT + _PAD,
-            relwidth=1/3, width=-(_PAD + _GAP // 2),
-            relheight=1,  height=-(_TOP_BAR_HEIGHT + 2 * _PAD),
-        )
-        _right_wrap.place(
-            relx=1/3, x=_GAP // 2, y=_TOP_BAR_HEIGHT + _PAD,
-            relwidth=2/3, width=-(_PAD + _GAP // 2),
-            relheight=1,  height=-(_TOP_BAR_HEIGHT + 2 * _PAD),
-        )
-
-        self.left_panel  = LeftPanel(_left_wrap,  controller)
-        self.right_panel = RightPanel(_right_wrap, controller)
-        self.left_panel.pack(fill="both", expand=True)
-        self.right_panel.pack(fill="both", expand=True)
-
-        # Inject panel references into the controller.
         controller.left_panel  = self.left_panel
         controller.right_panel = self.right_panel
 
-        # ── Start queue polling ────────────────────────────────────────────────
+        # Delete removes the selected file, unless typing in a text box.
+        self.bind_all("<Delete>", self._on_delete_key, add="+")
+
         controller.start_polling()
-
-        # ── Window close handler ───────────────────────────────────────────────
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-
         logger.info("WhisperApp window created.")
+
+    def _set_icon(self) -> None:
+        self._icon_img = None
+        try:
+            self._icon_img = tk.PhotoImage(file=str(asset_path("icon.png")))
+            self.iconphoto(True, self._icon_img)
+            if os.name == "nt":
+                self.iconbitmap(default=str(asset_path("icon.ico")))
+        except tk.TclError:
+            logger.warning("App icon not found in assets/ — run create_icon.py.")
+
+    def _on_delete_key(self, event) -> None:
+        if isinstance(event.widget, (tk.Text, tk.Entry)):
+            return
+        if self.controller.selected_path:
+            self.controller.remove_file(self.controller.selected_path)
 
     def _open_settings(self) -> None:
         from .main import MODEL_DIR  # local import avoids a circular import at module load
@@ -133,6 +113,7 @@ class WhisperApp(TkinterDnD.Tk):
     def _on_close(self) -> None:
         """Gracefully stop any running transcription before quitting."""
         logger.info("Window close requested.")
+        self.right_panel.stop_audio()
         if self.controller.provider is not None and self.controller.provider.is_running:
             self.controller.stop_transcription()
             # Give the worker thread a moment to cleanly finish.

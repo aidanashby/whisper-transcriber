@@ -1,13 +1,14 @@
 """
-create_icon.py — generates assets/icon.ico using Pillow.
+create_icon.py — draws the app icon into assets/icon.ico and assets/icon.png.
 
-Run this once before building with PyInstaller:
+Run this before building with PyInstaller:
     python create_icon.py
 
-Produces a green icon with a white waveform motif at multiple sizes
-(256×256, 128×128, 64×64, 48×48, 32×32, 16×16) packed into a single .ico.
+Flat, in the style of yt-slurp's icon: a rounded green square (the same
+green as the interface's ACCENT), a dark speech bubble, and a white
+waveform whose centre bar is pale green.
 
-Requires: Pillow (pip install pillow)  — already in requirements.txt.
+Requires: Pillow (already in requirements.txt).
 """
 
 from __future__ import annotations
@@ -17,66 +18,43 @@ from pathlib import Path
 try:
     from PIL import Image, ImageDraw
 except ImportError:
-    raise SystemExit(
-        "Pillow is required to generate the icon.\n"
-        "Run:  pip install pillow"
-    )
+    raise SystemExit("Pillow is required to generate the icon.\nRun:  pip install pillow")
 
-# Brand green (matches BTN_START_COLOR in constants.py)
-GREEN  = (67, 160, 71, 255)
-WHITE  = (255, 255, 255, 255)
-TRANSP = (0, 0, 0, 0)
+GREEN      = "#34c26b"   # matches ACCENT in src/ui/constants.py
+DARK       = "#0f1a13"   # matches ACCENT_TEXT
+PALE_GREEN = "#a9e5c0"   # GREEN mixed 55% towards white
+WHITE      = "#ffffff"
 
-SIZES = [256, 128, 64, 48, 32, 16]
+SIZES = [256, 128, 64, 48, 32, 24, 16]
+_SUPERSAMPLE = 4
 
 
-def _make_frame(size: int) -> Image.Image:
-    img  = Image.new("RGBA", (size, size), TRANSP)
-    draw = ImageDraw.Draw(img)
-
-    # Rounded green rectangle background
-    pad    = max(1, size // 10)
-    radius = max(2, size // 5)
-    draw.rounded_rectangle(
-        [pad, pad, size - pad, size - pad],
-        radius=radius,
-        fill=GREEN,
-    )
-
-    # Simple audio-waveform motif: 5 vertical bars of varying heights
-    # (centre bar tallest, outer bars shortest)
-    num_bars   = 5
-    bar_ratios = [0.28, 0.48, 0.65, 0.48, 0.28]  # relative heights
-    bar_w      = max(2, size // 14)
-    spacing    = max(1, size // 18)
-    total_w    = num_bars * bar_w + (num_bars - 1) * spacing
-    start_x    = (size - total_w) // 2
-    centre_y   = size // 2
-
-    for i, ratio in enumerate(bar_ratios):
-        bar_h = max(2, int(size * ratio * 0.75))
-        x1 = start_x + i * (bar_w + spacing)
-        y1 = centre_y - bar_h // 2
-        x2 = x1 + bar_w
-        y2 = centre_y + bar_h // 2
-        draw.rectangle([x1, y1, x2, y2], fill=WHITE)
-
-    return img
+def draw(size: int) -> Image.Image:
+    n = size * _SUPERSAMPLE
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([n * .04, n * .04, n * .96, n * .96], radius=n * .22, fill=GREEN)
+    # Speech bubble with its tail at the bottom left
+    d.rounded_rectangle([n * .17, n * .2, n * .83, n * .7], radius=n * .16, fill=DARK)
+    d.polygon([(n * .27, n * .62), (n * .25, n * .84), (n * .46, n * .66)], fill=DARK)
+    # Waveform; small sizes get fewer, wider bars so they stay legible
+    heights = [.12, .26, .36, .26, .12] if size >= 32 else [.2, .36, .2]
+    bar_w, gap = (n * .06, n * .045) if size >= 32 else (n * .1, n * .07)
+    x = n / 2 - (len(heights) * bar_w + (len(heights) - 1) * gap) / 2
+    for i, h in enumerate(heights):
+        fill = PALE_GREEN if i == len(heights) // 2 else WHITE
+        d.rounded_rectangle([x, n * .45 - n * h / 2, x + bar_w, n * .45 + n * h / 2], radius=bar_w / 2, fill=fill)
+        x += bar_w + gap
+    return img.resize((size, size), Image.LANCZOS)
 
 
 def main() -> None:
-    frames     = [_make_frame(s) for s in SIZES]
-    assets_dir = Path(__file__).parent / "assets"
-    assets_dir.mkdir(exist_ok=True)
-    out = assets_dir / "icon.ico"
-
-    frames[0].save(
-        out,
-        format="ICO",
-        sizes=[(s, s) for s in SIZES],
-        append_images=frames[1:],
-    )
-    print(f"Icon written to: {out}")
+    assets = Path(__file__).parent / "assets"
+    assets.mkdir(exist_ok=True)
+    frames = [draw(s) for s in SIZES]
+    frames[0].save(assets / "icon.ico", format="ICO", sizes=[(s, s) for s in SIZES], append_images=frames[1:])
+    frames[0].save(assets / "icon.png")
+    print(f"Icon written to: {assets}")
 
 
 if __name__ == "__main__":

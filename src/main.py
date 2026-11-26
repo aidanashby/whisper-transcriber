@@ -104,8 +104,8 @@ def main() -> None:
     # errors out mid-resize. Must be called before any window is created.
     ctk.deactivate_automatic_dpi_awareness()
 
-    ctk.set_appearance_mode("light")
-    ctk.set_default_color_theme("green")
+    from .ui.chrome import apply_theme
+    apply_theme()
 
     from . import settings as settings_module
     from .controller import AppController

@@ -54,7 +54,7 @@ def _find_nvidia_dlls():
         print("  Run: pip install nvidia-cublas-cu12 nvidia-cuda-runtime-cu12")
     return found
 
-datas        = []
+datas        = [("assets/icon.ico", "assets"), ("assets/icon.png", "assets")]
 binaries     = _find_nvidia_dlls()
 hiddenimports = [
     # Pydantic is used internally by faster-whisper; PyInstaller misses it.

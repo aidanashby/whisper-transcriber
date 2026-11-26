@@ -48,3 +48,37 @@ def test_initialize_provider_replaces_provider_when_not_running(monkeypatch):
 
     assert controller.provider is not sentinel_provider
     assert isinstance(controller.provider, LocalWhisperProvider)
+
+
+def _controller_with(paths):
+    from src.controller import AppController, FileEntry
+    c = AppController()
+    c.file_entries = [FileEntry(path=p) for p in paths]
+    return c
+
+
+def test_move_file_reorders_list_and_waiting_batch():
+    c = _controller_with(["a", "b", "c", "d"])
+    c._pending = ["b", "c", "d"]          # "a" already being transcribed
+    c.move_file("d", 1)                   # drop line above "b"
+    assert [e.path for e in c.file_entries] == ["a", "d", "b", "c"]
+    assert c._pending == ["d", "b", "c"]
+    c.move_file("d", 4)                   # drop line below the last row
+    assert [e.path for e in c.file_entries] == ["a", "b", "c", "d"]
+
+
+def test_remove_file_drops_it_from_waiting_batch_but_not_while_processing():
+    c = _controller_with(["a", "b"])
+    c.file_entries[0].state = "processing"
+    c._pending = ["b"]
+    c.remove_file("a")
+    c.remove_file("b")
+    assert [e.path for e in c.file_entries] == ["a"]
+    assert c._pending == []
+
+
+def test_edits_replace_the_stored_transcription():
+    c = _controller_with(["a"])
+    c.transcriptions["a"] = "helo"
+    c.update_transcription("a", "hello")
+    assert c.transcriptions["a"] == "hello"
